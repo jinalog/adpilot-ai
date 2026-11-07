@@ -2,7 +2,7 @@
 
 AdPilot AI는 자연어 캠페인 설정, 광고 성과 분석, 이상 탐지를 안전한 승인 흐름과 결합하는 AI 광고 운영 플랫폼입니다. 실제 광고 송출이나 광고 계정 변경이 아닌 합성 데이터 기반 포트폴리오 프로젝트이며, AI Backend/Agent Platform 설계 역량을 검증하는 것이 목적입니다.
 
-현재 상태는 **Phase 1.5 — Campaign Administration UI 완료**입니다. Campaign CRUD, 결정론적 검증, 승인과 상태 전이, PostgreSQL migration 및 Streamlit 관리자 화면을 제공합니다. Campaign Agent와 Performance Analyst는 아직 구현하지 않았습니다.
+현재 상태는 **Phase 2 — AI Campaign Setup 완료**입니다. Campaign 관리 기능 위에 자연어 요청을 부분 초안으로 변환하고, 누락 질문·결정론적 검증·편집 가능한 미리보기·명시적 DRAFT 저장을 제공하는 LangGraph workflow를 추가했습니다. Performance Analyst와 성과 분석은 아직 구현하지 않았습니다.
 
 ## 목표 기능
 
@@ -20,7 +20,7 @@ AdPilot AI는 자연어 캠페인 설정, 광고 성과 분석, 이상 탐지를
 - Streamlit REST client
 - pytest, Ruff
 - Docker, Docker Compose
-- LangGraph 및 LLM provider abstraction은 Phase 2에서 도입
+- LangGraph, Mock/OpenAI Responses provider adapter
 
 ## 아키텍처
 
@@ -158,7 +158,32 @@ DRAFT --approve--> APPROVED --> ACTIVE <--> PAUSED
 
 API 오류는 404, 409, 422, 연결 실패, timeout과 예상하지 못한 응답으로 구분합니다. UI 검증은 입력 편의를 위한 보조 수단이며 Backend 검증이 최종 기준입니다. Dashboard의 상태 집계는 목록 응답의 `total`만 사용하도록 각 요청을 `limit=1`로 제한합니다.
 
-Phase 0–1.5의 실제 실행 화면과 검증 설명은 [Portfolio Evidence](docs/portfolio-evidence.md)에서 확인할 수 있습니다.
+Phase 0–2의 실제 실행 화면과 검증 설명은 [Portfolio Evidence](docs/portfolio-evidence.md)에서 확인할 수 있습니다.
+
+## AI Campaign Setup API
+
+기본 `AI_PROVIDER=mock`은 외부 호출이 없는 결정론적 개발용 extractor입니다. Mock 결과는 실제 LLM 정확도가 아닙니다. 생성·보완은 `campaign_drafts`와 `agent_runs`만 기록하며 Campaign은 사용자가 save를 호출할 때만 기존 Campaign Service를 통해 `DRAFT`로 만들어집니다.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ai/campaign-drafts/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"캠페인명: 겨울 설치; 목표: 신규 앱 설치; 총예산: 300만원"}'
+
+curl -X POST http://localhost:8000/api/v1/ai/campaign-drafts/{draft_id}/refine \
+  -H 'Content-Type: application/json' \
+  -d '{"draft_updates":{"daily_budget_krw":100000,"start_date":"2026-12-01","end_date":"2026-12-31","channels":["mobile"],"targeting":{}}}'
+
+curl http://localhost:8000/api/v1/ai/campaign-drafts/{draft_id}
+curl -X POST http://localhost:8000/api/v1/ai/campaign-drafts/{draft_id}/save
+```
+
+`READY`가 아닌 초안 저장과 저장 완료 초안의 보완은 `409`로 차단됩니다. 동일 draft save 재시도는 새 Campaign을 만들지 않고 연결된 ID를 반환합니다. 실제 OpenAI adapter는 구현되어 있지만 `AI_PROVIDER=openai`, API key, `AI_REAL_LLM_OPT_IN=true`가 모두 없으면 호출할 수 없습니다.
+
+Mock golden dataset 실행:
+
+```bash
+PYTHONPATH=backend python evaluations/run_campaign_setup_golden.py
+```
 
 ## 환경 변수
 
@@ -170,13 +195,18 @@ Phase 0–1.5의 실제 실행 화면과 검증 설명은 [Portfolio Evidence](d
 | `DATABASE_URL` | SQLAlchemy 연결 URL | PostgreSQL 개발 DB |
 | `API_BASE_URL` | Streamlit이 호출할 API | Compose 내부 backend URL |
 | `POSTGRES_*` | 로컬 DB 초기화 | 개발 전용 값 |
+| `AI_PROVIDER` | extractor 선택 | `mock` |
+| `AI_PROVIDER_TIMEOUT_SECONDS` | provider 호출 제한 시간 | `10` |
+| `AI_PROVIDER_MAX_RETRIES` | transient 오류 재시도(최대 2) | `2` |
+| `AI_REAL_LLM_OPT_IN` | 실제 adapter 호출 명시 동의 | `false` |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | OpenAI adapter 설정 | key 없음 / `gpt-4.1-mini` |
 
 ## 개발 현황
 
 - [x] Phase 0: 프로젝트 구조, 실행 환경, health API, 기본 UI, 테스트, 문서
 - [x] Phase 1: Campaign DB 모델, migration, CRUD, 상태 전이 및 API 테스트
 - [x] Phase 1.5: Streamlit Campaign Administration UI와 API client 테스트
-- [ ] Phase 2: AI Campaign Setup Agent와 승인 흐름
+- [x] Phase 2: AI Campaign Setup Agent, 명시적 DRAFT 저장과 별도 승인 흐름
 - [ ] Phase 3: 합성 광고 데이터, KPI, dashboard, 이상 탐지
 - [ ] Phase 4: 안전한 AI Performance Analyst
 - [ ] Phase 5: 평가, 신뢰성, 관측성, 부하 테스트

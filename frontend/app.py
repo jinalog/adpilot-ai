@@ -1,17 +1,24 @@
 import streamlit as st
 
 from api_client.client import AdPilotApiClient
+from views.ai_campaign_setup import render_ai_campaign_setup
 from views.campaign_create import render_campaign_create
 from views.campaign_detail import render_campaign_detail
 from views.campaign_list import render_campaign_list
 from views.common import show_flash
 from views.dashboard import render_dashboard
 
-PAGES = ("Dashboard", "Campaign List", "Campaign Create", "Campaign Detail")
+PAGES = (
+    "Dashboard",
+    "Campaign List",
+    "Campaign Create",
+    "AI Campaign Setup",
+    "Campaign Detail",
+)
 
 st.set_page_config(page_title="AdPilot AI", page_icon="✈️", layout="wide")
 st.title("AdPilot AI")
-st.caption("Campaign Administration · Phase 1.5")
+st.caption("Campaign Administration · Phase 2")
 
 
 def navigate(page: str, campaign_id: str | None = None) -> None:
@@ -44,5 +51,7 @@ elif current_page == "Campaign List":
     render_campaign_list(api_client, navigate)
 elif current_page == "Campaign Create":
     render_campaign_create(api_client, navigate)
+elif current_page == "AI Campaign Setup":
+    render_ai_campaign_setup(api_client, navigate)
 else:
     render_campaign_detail(api_client, navigate)

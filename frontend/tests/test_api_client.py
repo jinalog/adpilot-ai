@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from typing import Any
 
 import pytest
@@ -10,6 +11,12 @@ from api_client.client import (
     ApiConnectionError,
     ApiResponseError,
     ApiTimeoutError,
+)
+from views.ai_campaign_setup import (
+    acquire_save_lock,
+    build_draft_view_model,
+    build_refine_payload,
+    complete_saved_draft,
 )
 from views.common import format_budget, parse_targeting
 
@@ -153,3 +160,78 @@ def test_targeting_and_budget_ui_helpers() -> None:
         parse_targeting("not-json")
     with pytest.raises(ValueError, match="객체"):
         parse_targeting("[]")
+
+
+def test_ai_campaign_api_methods_use_expected_contract() -> None:
+    draft = {"draft_id": "draft-id", "status": "READY", "provider_mode": "mock"}
+    saved = {"draft_id": "draft-id", "campaign_id": "campaign-id"}
+    session = FakeSession(
+        [response(201, draft), response(200, draft), response(200, draft), response(200, saved)]
+    )
+    client = AdPilotApiClient("http://backend/api/v1", session=session)  # type: ignore[arg-type]
+
+    assert client.generate_ai_campaign_draft("request")["status"] == "READY"
+    client.refine_ai_campaign_draft("draft-id", draft_updates={"name": "Edited"})
+    client.get_ai_campaign_draft("draft-id")
+    assert client.save_ai_campaign_draft("draft-id")["campaign_id"] == "campaign-id"
+
+    assert [call["url"] for call in session.calls] == [
+        "http://backend/api/v1/ai/campaign-drafts/generate",
+        "http://backend/api/v1/ai/campaign-drafts/draft-id/refine",
+        "http://backend/api/v1/ai/campaign-drafts/draft-id",
+        "http://backend/api/v1/ai/campaign-drafts/draft-id/save",
+    ]
+    assert session.calls[1]["json"]["draft_updates"] == {"name": "Edited"}
+
+
+def test_ready_preview_payload_serializes_editable_fields() -> None:
+    payload = build_refine_payload(
+        name="Preview",
+        objective="Install",
+        total_budget_krw=1_000_000,
+        daily_budget_krw=100_000,
+        start_date=date(2026, 12, 1),
+        end_date=date(2026, 12, 10),
+        channels=["mobile"],
+        targeting_raw='{"country":"KR"}',
+    )
+
+    assert payload["start_date"] == "2026-12-01"
+    assert payload["targeting"] == {"country": "KR"}
+
+
+def test_ai_draft_view_model_exposes_ready_clarification_and_errors() -> None:
+    ready = build_draft_view_model({"status": "READY", "provider_mode": "mock"})
+    clarification = build_draft_view_model(
+        {
+            "status": "NEEDS_CLARIFICATION",
+            "provider_mode": "mock",
+            "missing_fields": ["name"],
+            "clarification_questions": ["캠페인명을 알려주세요."],
+        }
+    )
+    invalid = build_draft_view_model(
+        {"status": "VALIDATION_FAILED", "validation_errors": ["invalid budget"]}
+    )
+
+    assert ready.provider_label == "MOCK"
+    assert ready.can_edit and ready.can_save
+    assert clarification.questions == ["캠페인명을 알려주세요."]
+    assert not clarification.can_save
+    assert invalid.errors == ["invalid budget"]
+
+
+def test_save_lock_blocks_duplicate_click_and_completion_navigates() -> None:
+    state: dict[str, Any] = {"ai_campaign_draft": {"status": "READY"}}
+    navigation: list[tuple[str, str | None]] = []
+
+    assert acquire_save_lock(state) is True
+    assert acquire_save_lock(state) is False
+    complete_saved_draft(
+        state,
+        {"campaign_id": "campaign-id"},
+        lambda page, campaign_id=None: navigation.append((page, campaign_id)),
+    )
+
+    assert state["ai_save_in_progress"] is False
+    assert navigation == [("Campaign Detail", "campaign-id")]

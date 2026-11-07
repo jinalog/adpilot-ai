@@ -19,13 +19,14 @@ class CampaignService:
     def __init__(self, repository: CampaignRepository) -> None:
         self.repository = repository
 
-    def create(self, data: CampaignCreate) -> Campaign:
-        self._validate_values(data)
+    def create(self, data: CampaignCreate, *, commit: bool = True) -> Campaign:
+        self.validate_create(data)
         campaign = Campaign(**data.model_dump(), status=CampaignStatus.DRAFT.value)
         try:
             self.repository.add(campaign)
-            self.repository.commit()
-            self.repository.refresh(campaign)
+            if commit:
+                self.repository.commit()
+                self.repository.refresh(campaign)
         except Exception:
             self.repository.rollback()
             raise
@@ -104,7 +105,7 @@ class CampaignService:
         self.change_status(campaign_id, CampaignStatus.INACTIVE)
 
     @staticmethod
-    def _validate_values(data: CampaignCreate) -> None:
+    def validate_create(data: CampaignCreate) -> None:
         CampaignService._run_value_validation(
             CampaignValues(
                 total_budget_krw=data.total_budget_krw,

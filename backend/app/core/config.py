@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     app_env: str = "local"
     api_v1_prefix: str = "/api/v1"
     database_url: str = "postgresql+psycopg://adpilot:adpilot@localhost:5432/adpilot"
+    ai_provider: str = "mock"
+    ai_provider_timeout_seconds: float = 10.0
+    ai_provider_max_retries: int = 2
+    ai_real_llm_opt_in: bool = False
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1-mini"
 
 
 @lru_cache

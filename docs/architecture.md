@@ -45,7 +45,9 @@ Dashboard는 전체와 상태별 목록 API를 `limit=1`로 호출하고 응답�
 
 ### 캠페인 설정 (Phase 2)
 
-자연어 요청 → Agent structured draft → Pydantic validation → domain validation → 사용자 확인 → application service 승인 → transaction → PostgreSQL. Agent는 DB write tool을 갖지 않는다.
+자연어 요청 → AI 부분 초안 → 누락 확인/보완 → Pydantic 및 Campaign domain 검증 → 사용자 편집·확인 → Campaign Service로 `DRAFT` 저장 → 별도 승인 API 순서다. 생성·보완 단계는 `campaign_drafts`와 `agent_runs`만 기록하며 Campaign 행을 만들지 않는다. Agent와 provider는 DB write/tool 권한이 없고 save application use case만 Campaign을 생성한다.
+
+LangGraph는 `extract_requirements`, `merge_context`, `check_missing_fields`, `validate_draft`, preview/clarification/provider-error 노드와 conditional edge를 사용한다. 완료 상태는 `READY`, `NEEDS_CLARIFICATION`, `VALIDATION_FAILED`, `PROVIDER_ERROR`로 분기한다. 동일 draft save는 행 잠금과 단일 transaction으로 연결된 Campaign을 재사용한다.
 
 ### 성과 분석 (Phase 3–4)
 
@@ -57,7 +59,7 @@ Workflow state에는 request ID, 단계, 검증 오류, retry 수, tool result r
 
 ## 데이터 모델 방향
 
-Phase 1의 `campaigns`는 UUID, 이름/목표, 원화 정수 예산, 기간, JSON 채널/타게팅, 상태, 승인·비활성화·생성·수정 시각을 저장한다. DB check constraint와 domain validation을 함께 적용해 우회 저장도 방어한다. Phase 2에는 승인 전 AI `campaign_drafts`와 `agent_runs`, Phase 3에는 `daily_ad_metrics`와 anomaly label/result를 추가한다.
+Phase 1의 `campaigns`는 UUID, 이름/목표, 원화 정수 예산, 기간, JSON 채널/타게팅, 상태, 승인·비활성화·생성·수정 시각을 저장한다. DB check constraint와 domain validation을 함께 적용해 우회 저장도 방어한다. Phase 2의 `campaign_drafts`는 현재 구조화 값과 판정만, `agent_runs`는 provider/model/retry/latency/usage/error metadata만 저장한다. 자연어와 provider 원문은 저장하지 않는다. Phase 3에는 `daily_ad_metrics`와 anomaly label/result를 추가한다.
 
 상태 전이는 `DRAFT --approve--> APPROVED --> ACTIVE <--> PAUSED`이며 모든 비활성 상태에서 `INACTIVE`로 이동할 수 있다. `INACTIVE`는 terminal state다. 승인된 설정을 수정하면 승인을 무효화하고 `DRAFT`로 되돌린다. 실제 삭제 대신 상태와 `deactivated_at`을 남기는 soft delete를 사용한다.
 

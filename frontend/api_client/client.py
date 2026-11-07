@@ -91,6 +91,27 @@ class AdPilotApiClient:
     def deactivate_campaign(self, campaign_id: str) -> None:
         self._request("DELETE", f"/campaigns/{campaign_id}")
 
+    def generate_ai_campaign_draft(self, prompt: str) -> dict[str, Any]:
+        return self._request_json("POST", "/ai/campaign-drafts/generate", json={"prompt": prompt})
+
+    def refine_ai_campaign_draft(
+        self,
+        draft_id: str,
+        *,
+        additional_input: str = "",
+        draft_updates: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"additional_input": additional_input}
+        if draft_updates is not None:
+            payload["draft_updates"] = dict(draft_updates)
+        return self._request_json("POST", f"/ai/campaign-drafts/{draft_id}/refine", json=payload)
+
+    def get_ai_campaign_draft(self, draft_id: str) -> dict[str, Any]:
+        return self._request_json("GET", f"/ai/campaign-drafts/{draft_id}")
+
+    def save_ai_campaign_draft(self, draft_id: str) -> dict[str, Any]:
+        return self._request_json("POST", f"/ai/campaign-drafts/{draft_id}/save")
+
     def _request_json(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         response = self._request(method, path, **kwargs)
         try:

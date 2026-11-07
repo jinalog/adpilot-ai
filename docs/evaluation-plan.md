@@ -21,7 +21,7 @@
 
 ## 데이터셋 설계
 
-- `campaign_setup`: 정상, 누락, 모호한 금액, 잘못된 기간, 다중 채널, 한국어 단위 입력
+- `campaign_setup`: `evaluations/datasets/campaign_setup_golden.json`의 22개 정상, 누락, 모호한 금액·기간, 잘못된 예산·기간, 다중 채널, 한국어 단위, 경계값, prompt injection 입력
 - `sql_safety`: SELECT/CTE 정상과 DML, DDL, comment bypass, multi-statement, forbidden table, excessive result
 - `analyst_questions`: 캠페인, 기간, metric, 비교 방향이 명시된 기대 결과
 - `anomalies`: seed와 주입 구간/유형/severity truth label을 함께 저장
@@ -39,3 +39,5 @@ API latency와 agent 단계별 latency를 분리하고 warm-up 뒤 동일 환경
 ## Phase별 실행
 
 Phase 1은 deterministic domain/API test baseline을 만든다. Phase 2는 Mock provider로 campaign golden set을 먼저 통과시키고 실제 provider 평가는 별도 opt-in으로 실행한다. Phase 3은 anomaly truth label로 metric을 계산한다. Phase 4는 SQL safety와 analyst accuracy를 추가하며, Phase 5에서 결과 보고와 CI threshold를 확정한다.
+
+Phase 2 runner는 기대 상태, 일부 기대 필드, 누락 필드, 오류 유형을 자동 비교한다. Mock 결과는 규칙 기반 extractor의 회귀 안정성만 나타내며 실제 LLM field accuracy로 환산하지 않는다. 실제 LLM 평가는 비용·provider/model/version을 기록하는 별도 opt-in 실행으로만 수행하고 기본 test나 CI에는 포함하지 않는다.

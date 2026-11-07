@@ -18,9 +18,12 @@
 | DONE | P0 | Campaign 목록/생성/상세/수정 UI | API client mock 및 E2E |
 | DONE | P0 | 승인/상태/확인형 비활성화 UI | 상태 lifecycle E2E |
 | DONE | P0 | API 오류 분류와 표시 | 404/409/422/timeout/connection tests |
-| NEXT | P1 | idempotency 및 optimistic concurrency 결정 | conflict tests/ADR |
-| LATER | P1 | Mock/real LLM provider interface | contract tests |
-| LATER | P1 | Campaign Setup workflow와 draft | golden dataset |
+| DONE | P0 | AI draft 단위 save idempotency | 반복 save API/DB test와 ADR |
+| DONE | P0 | Mock/real LLM provider interface | retry/schema/opt-in contract tests |
+| DONE | P0 | LangGraph Campaign Setup workflow와 draft/run 저장 | conditional branch/API/migration tests |
+| DONE | P0 | AI Campaign Setup Streamlit REST 화면 | preview/clarification/error/save tests 및 E2E |
+| DONE | P0 | Campaign Setup Mock golden dataset 22건 | deterministic runner 22/22 |
+| LATER | P1 | Campaign 전반 optimistic concurrency | version/conflict ADR 및 tests |
 | LATER | P1 | 합성 데이터/KPI/anomaly | deterministic tests |
 | LATER | P1 | Safe SQL Analyst | security/evaluation suite |
 | LATER | P2 | observability와 load test | measured report |
@@ -35,3 +38,11 @@
 - create/list/get/update/deactivate/approve API의 status code와 error body가 테스트된다.
 - migration을 빈 PostgreSQL에 적용하고 되돌리는 검증을 수행한다.
 - 실제 검증 결과만 README 또는 작업 보고에 기록한다.
+
+## Phase 2 완료 결과
+
+- 부분 초안과 필수 `CampaignCreate`를 분리하고 누락·검증·provider 실패를 별도 상태로 반환한다.
+- transient provider failure만 최대 2회 재시도하며 Mock이 기본값이다.
+- 자연어/provider 원문과 비밀은 DB·로그에 저장하지 않는다.
+- generate/refine은 Campaign을 만들지 않고, READY save만 기존 Campaign Service를 통해 DRAFT를 만든다.
+- draft 단위 중복 저장은 방지했다. Campaign 전체 optimistic concurrency는 범위 밖이며 후속 항목이다.

@@ -14,7 +14,7 @@
 
 ## Phase 2 — AI Campaign Setup
 
-Phase 1의 검증/저장 use case 위에 provider interface, mock provider, LangGraph workflow, structured draft, missing-field handling, bounded retry, approval과 agent run history를 추가한다. LLM key 없이 전체 workflow test가 재현되는 것이 완료 조건이다.
+**완료.** Phase 1의 검증/저장 use case 위에 provider Protocol, 기본 Mock과 opt-in OpenAI adapter, LangGraph conditional workflow, 부분 structured draft, 누락 질문, bounded retry, draft/run history, 편집 미리보기와 명시적 DRAFT 저장을 추가했다. 생성·보완은 Campaign을 만들지 않으며 승인은 기존 API에 분리했다. LLM key 없이 전체 test와 22개 Mock golden 평가가 재현된다.
 
 ## Phase 3 — Advertising Analytics
 

@@ -59,3 +59,39 @@
 선택: UI는 현재 상태에서 허용된 승인/활성화/일시정지/재활성화 버튼만 표시하고, 비활성화는 명시적 확인 후 실행한다. Backend가 최종 권한과 전이를 검증하며 409를 사용자에게 전달한다.
 
 근거: UI 검증은 우회 가능하므로 보안 경계가 아니다. 화면 편의성과 Backend의 결정론적 규칙을 분리한다.
+
+## ADR-011: AI 부분 초안과 저장 계약을 분리
+
+선택: Agent 내부 상태와 `campaign_drafts`에는 누락 값을 허용하는 `PartialCampaignDraft`를 사용하고, 저장 직전에만 모든 필드가 필수인 기존 `CampaignCreate`로 변환한다. LangGraph는 누락 확인과 결정론적 검증 결과에 따라 `READY`, `NEEDS_CLARIFICATION`, `VALIDATION_FAILED`, `PROVIDER_ERROR`를 구분한다.
+
+근거: LLM 추출 결과를 완성된 API 계약으로 가장하면 누락과 추측을 구분할 수 없다. 특히 상대 날짜나 월 예산으로부터 날짜·일예산을 임의 계산하지 않는다.
+
+## ADR-012: AI 실행 저장 범위를 최소화
+
+선택: `campaign_drafts`에는 현재 구조화 초안, 누락 필드, 검증 오류, 상태, provider mode, 저장된 Campaign ID와 시각만 저장한다. `agent_runs`에는 request/draft ID, 실행 상태와 실패 단계, provider/model, retry, latency, 제공된 경우의 token usage, 안전한 오류 코드만 저장한다. 자연어 원문, provider 원문 응답, API key는 DB와 애플리케이션 로그에 저장하지 않는다.
+
+근거: Phase 2의 재개·감사에 필요한 최소 메타데이터를 남기면서 프롬프트와 민감정보의 불필요한 보존을 피한다.
+
+## ADR-013: Provider 경계와 실호출 opt-in
+
+선택: workflow는 작은 Provider Protocol에만 의존한다. 기본 provider는 외부 호출이나 tool 권한이 없는 결정론적 Mock이며, 실제 provider adapter는 구조화 출력만 반환한다. 실제 adapter 선택과 실호출은 provider 환경변수, API key, 별도 `AI_REAL_LLM_OPT_IN=true`가 모두 있어야 한다. Mock golden 평가와 실제 LLM 평가는 별도 명령·지표로 관리하며 Mock 통과율을 LLM 정확도로 표현하지 않는다.
+
+근거: API key 없이 개발·테스트·UI가 재현되어야 하고 특정 SDK가 domain 및 graph에 침투하면 안 된다.
+
+## ADR-014: Provider timeout과 제한된 retry
+
+선택: provider 호출에는 환경설정 가능한 timeout을 적용한다. timeout, rate limit, 5xx 등 명시된 transient failure만 최초 호출 후 최대 2회 재시도하며, schema mismatch, 인증, 잘못된 요청 등 재시도 불가능한 오류는 즉시 `PROVIDER_ERROR`로 종료한다. 각 run에는 실제 retry 횟수와 안전한 오류 코드만 기록한다.
+
+근거: 무제한 retry와 숨은 지연을 막고, 동일 입력을 반복해도 복구되지 않는 오류에 비용을 쓰지 않는다.
+
+## ADR-015: 보완 입력은 명시된 값만 병합
+
+선택: refine은 provider가 새 입력에서 추출한 non-null 필드와 사용자가 편집 폼에서 명시한 값만 기존 초안 위에 덮어쓴다. 언급되지 않은 기존 값은 유지한다. 리스트와 객체도 필드 단위로 전체 교체하며 추측 병합이나 자동 날짜·예산 계산은 하지 않는다. 저장된 초안은 더 이상 보완할 수 없다.
+
+근거: 사용자 의도를 추적 가능하게 만들고 오래된 값의 우발적 삭제 및 LLM 추측을 피한다.
+
+## ADR-016: AI 초안 저장에만 좁은 idempotency 적용
+
+선택: `READY` 초안 저장은 해당 draft 행을 잠그고 기존 `CampaignService.create()`의 검증·생성 경로를 같은 transaction에서 재사용한다. draft에 연결된 Campaign ID가 있으면 이를 그대로 반환한다. 저장 완료 후 refine과 추가 저장에 의한 변경은 차단하되, 동일 save 재시도는 성공한 기존 Campaign을 반환한다.
+
+대안: Campaign 전체에 optimistic concurrency/version을 추가하는 방식은 Phase 2 범위를 넘으므로 구현하지 않고 후속 backlog로 유지한다.

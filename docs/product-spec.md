@@ -11,14 +11,15 @@
 1. 운영자가 목표, 예산, 기간, 채널을 자연어로 입력한다.
 2. Setup Agent가 구조화된 캠페인 초안을 만들고 누락 정보를 표시한다.
 3. 백엔드 validator가 예산, 기간, 타게팅 규칙을 검증한다.
-4. 운영자가 검증 결과를 확인하고 승인해야 캠페인이 저장된다.
-5. 운영자는 합성 성과 지표와 규칙 기반 이상을 조회한다.
-6. Analyst 질문에는 실제 계산 지표와 AI 가설이 분리되어 표시된다.
+4. 운영자가 검증 결과를 확인하고 명시적으로 저장하면 `DRAFT` Campaign이 생성된다.
+5. 운영 승인은 기존 승인 API에서 별도로 수행한다.
+6. 운영자는 합성 성과 지표와 규칙 기반 이상을 조회한다.
+7. Analyst 질문에는 실제 계산 지표와 AI 가설이 분리되어 표시된다.
 
 ## MVP 범위
 
-- 승인 전 초안과 승인된 캠페인을 분리한 Campaign Management
-- Pydantic structured output 기반 AI Campaign Setup
+- 부분 AI 초안과 저장 가능한 Campaign 계약을 분리한 Campaign Management
+- Pydantic structured output, 누락 질문, 명시적 DRAFT 저장 기반 AI Campaign Setup
 - 30일 이상 합성 성과 및 삽입 anomaly 정답 label
 - CTR, CVR, CPM, CPC, CPA, ROAS 등 결정론적 KPI
 - CTR/CVR 급락, spend 급증, impression 급감 규칙 탐지
@@ -36,7 +37,7 @@ MVP 이후 후보는 creative 생성·심사, OpenRTB simulator, incident detect
 - 실제 광고 계정이나 외부 운영 설정 변경
 - 실사용자 개인정보 또는 실제 광고 성과 데이터
 - 승인 없는 자동 예산/타게팅 변경 및 복구
-- Phase 0의 LLM/LangGraph, 캠페인 CRUD, analytics 구현
+- Phase 3 이전의 성과 분석, 자연어 SQL, RAG 및 실제 광고 연동
 - 초기 MVP의 마이크로서비스, Kafka, Kubernetes
 
 ## MVP 수용 기준
@@ -44,7 +45,8 @@ MVP 이후 후보는 creative 생성·심사, OpenRTB simulator, incident detect
 - 모든 AI 출력이 명시적 Pydantic schema를 통과하거나 안전하게 실패한다.
 - 누락된 필수 정보는 임의로 확정하지 않고 사용자에게 표시한다.
 - invalid budget/date/state transition이 저장 전에 차단된다.
-- 승인 전 초안과 운영 캠페인이 DB와 API에서 구분된다.
+- AI 초안과 Campaign이 DB와 API에서 구분되고 생성·보완만으로 Campaign이 생기지 않는다.
+- 동일 AI 초안 저장 재시도는 Campaign을 중복 생성하지 않는다.
 - KPI는 정의된 0 나눗셈 정책으로 재현 가능하게 계산된다.
 - SQL은 read-only, table allowlist, AST, timeout, row limit 정책을 통과해야 한다.
 - anomaly label 데이터셋으로 precision/recall을 재현할 수 있다.
