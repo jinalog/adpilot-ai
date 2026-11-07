@@ -47,3 +47,15 @@
 선택: `total_budget_krw`, `daily_budget_krw`를 원화 최소 단위의 양수 `BIGINT`로 저장한다.
 
 대안: 부동소수점은 금액 오차가 발생하며, 초기 MVP에서 다중 통화 decimal 모델은 불필요하다. 다중 통화를 지원할 때 currency와 decimal minor-unit 정책을 별도 설계한다.
+
+## ADR-009: Streamlit 화면과 공통 REST client 분리
+
+선택: `frontend/views`는 표시와 사용자 상호작용만 담당하고, 모든 HTTP 호출·timeout·오류 해석·JSON 형태 확인은 `frontend/api_client`에서 처리한다. Dashboard 집계는 기존 목록 API를 상태별 `limit=1`로 호출해 `total`만 사용한다.
+
+대안: Streamlit 화면에서 직접 `requests`를 호출하거나 Dashboard용 Backend endpoint를 추가하는 방식. 전자는 중복 오류 처리와 테스트 어려움을 만들고, 후자는 Phase 1 Backend contract 변경이 필요해 제외했다. 캠페인 규모나 호출 비용이 증가하면 전용 stats endpoint를 다시 검토한다.
+
+## ADR-010: 관리자 UI 상태 전이는 Domain 정책을 그대로 반영
+
+선택: UI는 현재 상태에서 허용된 승인/활성화/일시정지/재활성화 버튼만 표시하고, 비활성화는 명시적 확인 후 실행한다. Backend가 최종 권한과 전이를 검증하며 409를 사용자에게 전달한다.
+
+근거: UI 검증은 우회 가능하므로 보안 경계가 아니다. 화면 편의성과 Backend의 결정론적 규칙을 분리한다.

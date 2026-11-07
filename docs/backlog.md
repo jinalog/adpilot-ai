@@ -14,6 +14,10 @@
 | DONE | P0 | Campaign SQLAlchemy model/initial migration | upgrade/downgrade |
 | DONE | P0 | Campaign repository/service | API 및 migration integration tests |
 | DONE | P0 | CRUD/deactivate/approve API | API normal/error/boundary tests |
+| DONE | P0 | Streamlit Campaign Dashboard와 sidebar navigation | 실제 Backend 연결 |
+| DONE | P0 | Campaign 목록/생성/상세/수정 UI | API client mock 및 E2E |
+| DONE | P0 | 승인/상태/확인형 비활성화 UI | 상태 lifecycle E2E |
+| DONE | P0 | API 오류 분류와 표시 | 404/409/422/timeout/connection tests |
 | NEXT | P1 | idempotency 및 optimistic concurrency 결정 | conflict tests/ADR |
 | LATER | P1 | Mock/real LLM provider interface | contract tests |
 | LATER | P1 | Campaign Setup workflow와 draft | golden dataset |

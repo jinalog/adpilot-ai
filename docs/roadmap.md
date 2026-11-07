@@ -8,6 +8,10 @@
 
 **완료.** Campaign entity, repository/service, 최초 migration, CRUD, deterministic budget/date/state rules, approval invalidation, soft deactivate와 API error contract를 구현했다. SQLite 기반 domain/API test와 전용 PostgreSQL migration round trip으로 검증한다.
 
+## Phase 1.5 — Campaign Administration UI
+
+**완료.** 기존 Campaign REST API만 사용하는 Streamlit Dashboard, 목록/필터/페이지네이션, 생성, 상세/수정, 승인·활성화·일시정지·재활성화·확인형 비활성화 화면을 구현했다. 공통 API client가 timeout, 연결 실패, HTTP validation과 비정상 JSON을 구분하며 mock client test와 전체 Docker/PostgreSQL 흐름으로 검증한다.
+
 ## Phase 2 — AI Campaign Setup
 
 Phase 1의 검증/저장 use case 위에 provider interface, mock provider, LangGraph workflow, structured draft, missing-field handling, bounded retry, approval과 agent run history를 추가한다. LLM key 없이 전체 workflow test가 재현되는 것이 완료 조건이다.

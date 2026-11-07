@@ -2,7 +2,7 @@
 
 AdPilot AI는 자연어 캠페인 설정, 광고 성과 분석, 이상 탐지를 안전한 승인 흐름과 결합하는 AI 광고 운영 플랫폼입니다. 실제 광고 송출이나 광고 계정 변경이 아닌 합성 데이터 기반 포트폴리오 프로젝트이며, AI Backend/Agent Platform 설계 역량을 검증하는 것이 목적입니다.
 
-현재 상태는 **Phase 1 — Campaign Backend 완료**입니다. Campaign CRUD, 결정론적 검증, 승인과 상태 전이, PostgreSQL migration을 제공합니다. Campaign Agent와 Performance Analyst는 아직 구현하지 않았습니다.
+현재 상태는 **Phase 1.5 — Campaign Administration UI 완료**입니다. Campaign CRUD, 결정론적 검증, 승인과 상태 전이, PostgreSQL migration 및 Streamlit 관리자 화면을 제공합니다. Campaign Agent와 Performance Analyst는 아직 구현하지 않았습니다.
 
 ## 목표 기능
 
@@ -144,6 +144,20 @@ DRAFT --approve--> APPROVED --> ACTIVE <--> PAUSED
 
 승인된 캠페인의 설정을 수정하면 기존 승인이 무효화되어 `DRAFT`로 돌아갑니다. `ACTIVE`, `PAUSED`, `INACTIVE` 캠페인의 설정 수정은 `409 Conflict`로 차단됩니다.
 
+## Streamlit Campaign Admin
+
+`http://localhost:8501`에서 다음 화면을 제공합니다.
+
+| 화면 | 연결 API | 기능 |
+|---|---|---|
+| Dashboard | `GET /health`, `GET /campaigns` | Backend 상태와 전체·상태별 캠페인 수 |
+| Campaign List | `GET /campaigns` | 상태 필터, 페이지네이션, 상세 이동 |
+| Campaign Create | `POST /campaigns` | 필수값·예산·기간·채널·타게팅 입력 |
+| Campaign Detail / Edit | `GET/PATCH /campaigns/{id}` | 상세 조회와 허용 상태의 설정 수정 |
+| Approval / Status | approve/status/delete API | 승인, 활성화, 일시정지, 재활성화, 확인형 비활성화 |
+
+API 오류는 404, 409, 422, 연결 실패, timeout과 예상하지 못한 응답으로 구분합니다. UI 검증은 입력 편의를 위한 보조 수단이며 Backend 검증이 최종 기준입니다. Dashboard의 상태 집계는 목록 응답의 `total`만 사용하도록 각 요청을 `limit=1`로 제한합니다.
+
 ## 환경 변수
 
 `.env.example`을 `.env`로 복사해 사용합니다. 저장소에 실제 비밀번호나 API key를 커밋하지 않습니다. 예제 계정은 로컬 개발 전용이며 운영 환경에서 사용할 수 없습니다.
@@ -159,6 +173,7 @@ DRAFT --approve--> APPROVED --> ACTIVE <--> PAUSED
 
 - [x] Phase 0: 프로젝트 구조, 실행 환경, health API, 기본 UI, 테스트, 문서
 - [x] Phase 1: Campaign DB 모델, migration, CRUD, 상태 전이 및 API 테스트
+- [x] Phase 1.5: Streamlit Campaign Administration UI와 API client 테스트
 - [ ] Phase 2: AI Campaign Setup Agent와 승인 흐름
 - [ ] Phase 3: 합성 광고 데이터, KPI, dashboard, 이상 탐지
 - [ ] Phase 4: 안전한 AI Performance Analyst

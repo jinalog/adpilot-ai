@@ -37,6 +37,12 @@
 
 ## 데이터 흐름
 
+### Campaign Administration UI (Phase 1.5)
+
+Streamlit sidebar 화면 → 공통 `AdPilotApiClient` → FastAPI Campaign API → application service → domain rules → PostgreSQL 순서로만 호출한다. UI는 DB, repository, service를 import하지 않는다. Client는 timeout과 HTTP/JSON 오류를 표준화하고, 화면은 404/409/422/연결 실패를 구분해 표시한다. 변경 성공 후 Streamlit state를 갱신해 최신 상세나 목록을 다시 조회한다.
+
+Dashboard는 전체와 상태별 목록 API를 `limit=1`로 호출하고 응답의 `total`만 사용한다. 별도 집계 endpoint를 추가하지 않아 Backend contract를 유지하면서 전체 캠페인 payload의 반복 다운로드를 피한다.
+
 ### 캠페인 설정 (Phase 2)
 
 자연어 요청 → Agent structured draft → Pydantic validation → domain validation → 사용자 확인 → application service 승인 → transaction → PostgreSQL. Agent는 DB write tool을 갖지 않는다.

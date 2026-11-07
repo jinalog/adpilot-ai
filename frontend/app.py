@@ -1,17 +1,48 @@
 import streamlit as st
 
 from api_client.client import AdPilotApiClient
+from views.campaign_create import render_campaign_create
+from views.campaign_detail import render_campaign_detail
+from views.campaign_list import render_campaign_list
+from views.common import show_flash
+from views.dashboard import render_dashboard
+
+PAGES = ("Dashboard", "Campaign List", "Campaign Create", "Campaign Detail")
 
 st.set_page_config(page_title="AdPilot AI", page_icon="✈️", layout="wide")
 st.title("AdPilot AI")
-st.caption("AI 기반 광고 캠페인 운영 플랫폼 — Phase 0")
+st.caption("Campaign Administration · Phase 1.5")
 
-st.info("현재는 프로젝트 초기화 단계입니다. 캠페인 및 분석 기능은 다음 Phase에서 제공됩니다.")
 
-try:
-    health = AdPilotApiClient().health()
-    st.success(f"Backend connected · {health['service']} v{health['version']}")
-    st.json(health)
-except Exception as exc:
-    st.error("Backend에 연결할 수 없습니다. API 서버 실행 상태를 확인하세요.")
-    st.code(str(exc))
+def navigate(page: str, campaign_id: str | None = None) -> None:
+    st.session_state["pending_page"] = page
+    if campaign_id is not None:
+        st.session_state["selected_campaign_id"] = campaign_id
+    st.rerun()
+
+
+pending_page = st.session_state.pop("pending_page", None)
+if pending_page is not None:
+    st.session_state["navigation_page"] = pending_page
+elif "navigation_page" not in st.session_state:
+    st.session_state["navigation_page"] = "Dashboard"
+
+selected_page = st.sidebar.radio(
+    "Navigation",
+    PAGES,
+    key="navigation_page",
+)
+current_page = selected_page
+
+st.sidebar.caption("Streamlit은 FastAPI REST API만 호출합니다.")
+show_flash()
+api_client = AdPilotApiClient()
+
+if current_page == "Dashboard":
+    render_dashboard(api_client)
+elif current_page == "Campaign List":
+    render_campaign_list(api_client, navigate)
+elif current_page == "Campaign Create":
+    render_campaign_create(api_client, navigate)
+else:
+    render_campaign_detail(api_client, navigate)

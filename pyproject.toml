@@ -22,7 +22,9 @@ dev = [
   "httpx>=0.28,<1.0",
   "pytest>=8.3,<9.0",
   "pytest-cov>=6.0,<7.0",
+  "requests>=2.32,<3.0",
   "ruff>=0.9,<1.0",
+  "streamlit>=1.41,<2.0",
 ]
 frontend = [
   "requests>=2.32,<3.0",
@@ -35,7 +37,8 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"
-testpaths = ["backend/tests"]
+pythonpath = ["backend", "frontend"]
+testpaths = ["backend/tests", "frontend/tests"]
 markers = [
   "integration: requires a dedicated PostgreSQL test database",
 ]
