@@ -158,6 +158,8 @@ DRAFT --approve--> APPROVED --> ACTIVE <--> PAUSED
 
 API 오류는 404, 409, 422, 연결 실패, timeout과 예상하지 못한 응답으로 구분합니다. UI 검증은 입력 편의를 위한 보조 수단이며 Backend 검증이 최종 기준입니다. Dashboard의 상태 집계는 목록 응답의 `total`만 사용하도록 각 요청을 `limit=1`로 제한합니다.
 
+Phase 0–1.5의 실제 실행 화면과 검증 설명은 [Portfolio Evidence](docs/portfolio-evidence.md)에서 확인할 수 있습니다.
+
 ## 환경 변수
 
 `.env.example`을 `.env`로 복사해 사용합니다. 저장소에 실제 비밀번호나 API key를 커밋하지 않습니다. 예제 계정은 로컬 개발 전용이며 운영 환경에서 사용할 수 없습니다.
