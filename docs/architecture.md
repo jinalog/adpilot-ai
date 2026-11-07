@@ -47,7 +47,7 @@ Dashboard는 전체와 상태별 목록 API를 `limit=1`로 호출하고 응답�
 
 자연어 요청 → AI 부분 초안 → 누락 확인/보완 → Pydantic 및 Campaign domain 검증 → 사용자 편집·확인 → Campaign Service로 `DRAFT` 저장 → 별도 승인 API 순서다. 생성·보완 단계는 `campaign_drafts`와 `agent_runs`만 기록하며 Campaign 행을 만들지 않는다. Agent와 provider는 DB write/tool 권한이 없고 save application use case만 Campaign을 생성한다.
 
-LangGraph는 `extract_requirements`, `merge_context`, `check_missing_fields`, `validate_draft`, preview/clarification/provider-error 노드와 conditional edge를 사용한다. 완료 상태는 `READY`, `NEEDS_CLARIFICATION`, `VALIDATION_FAILED`, `PROVIDER_ERROR`로 분기한다. 동일 draft save는 행 잠금과 단일 transaction으로 연결된 Campaign을 재사용한다.
+LangGraph는 입력 텍스트 유무를 판단하는 시작 conditional edge, `extract_requirements`/`skip_provider_extraction`, `merge_context`, `check_missing_fields`, `validate_draft`, preview/clarification/provider-error 노드를 사용한다. `additional_input`이 유효한 텍스트일 때만 provider 추출을 실행하고, 구조화 `draft_updates`만 있는 refine은 provider를 호출하지 않은 채 기존 초안과 병합한 뒤 동일한 누락·결정론적 검증을 거친다. 완료 상태는 `READY`, `NEEDS_CLARIFICATION`, `VALIDATION_FAILED`, `PROVIDER_ERROR`로 분기한다. 동일 draft save는 PostgreSQL 행 잠금과 단일 transaction으로 연결된 Campaign을 재사용한다.
 
 ### 성과 분석 (Phase 3–4)
 
@@ -55,7 +55,7 @@ LangGraph는 `extract_requirements`, `merge_context`, `check_missing_fields`, `v
 
 ## Agent Workflow 원칙
 
-Workflow state에는 request ID, 단계, 검증 오류, retry 수, tool result reference, latency와 token usage를 둔다. 외부 호출에는 timeout과 제한된 retry를 적용한다. 구조화 출력 실패는 원문을 저장 대상으로 사용하지 않으며, 최종 실패를 명시적으로 반환한다. Mock provider 결과는 실제 provider 결과와 구분한다.
+Workflow state에는 request ID, 단계, 검증 오류, retry 수, tool result reference, latency와 token usage를 둔다. 외부 호출에는 timeout과 제한된 retry를 적용한다. provider 미사용 실행은 `not_used`/`structured-updates-only`, retry 0, token usage `null`로 실제 provider 실행과 구분한다. 구조화 출력 실패는 원문을 저장 대상으로 사용하지 않으며, 최종 실패를 명시적으로 반환한다. Provider 실패 시 기존 초안을 보존하고 그 값을 기준으로 실제 누락 필드만 다시 계산한다. Mock provider 결과도 실제 provider 결과와 구분한다.
 
 ## 데이터 모델 방향
 

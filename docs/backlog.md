@@ -23,6 +23,8 @@
 | DONE | P0 | LangGraph Campaign Setup workflow와 draft/run 저장 | conditional branch/API/migration tests |
 | DONE | P0 | AI Campaign Setup Streamlit REST 화면 | preview/clarification/error/save tests 및 E2E |
 | DONE | P0 | Campaign Setup Mock golden dataset 22건 | deterministic runner 22/22 |
+| DONE | P0 | Phase 2.1 구조화 refine provider skip 및 실패 초안 보존 | workflow/service/API regression tests |
+| DONE | P0 | PostgreSQL 동시 AI draft save 및 rollback 검증 | 독립 Session 경쟁/실패 주입 integration tests |
 | LATER | P1 | Campaign 전반 optimistic concurrency | version/conflict ADR 및 tests |
 | LATER | P1 | 합성 데이터/KPI/anomaly | deterministic tests |
 | LATER | P1 | Safe SQL Analyst | security/evaluation suite |
@@ -46,3 +48,6 @@
 - 자연어/provider 원문과 비밀은 DB·로그에 저장하지 않는다.
 - generate/refine은 Campaign을 만들지 않고, READY save만 기존 Campaign Service를 통해 DRAFT를 만든다.
 - draft 단위 중복 저장은 방지했다. Campaign 전체 optimistic concurrency는 범위 밖이며 후속 항목이다.
+- 구조화 필드 수정만 있는 refine은 provider를 호출하지 않고도 동일한 누락·검증 경로를 통과한다.
+- Provider 실패 시 기존 초안과 실제 누락 필드를 보존하며 상태는 `PROVIDER_ERROR`로 유지한다.
+- 전용 PostgreSQL의 독립 Session 경쟁에서 동일 draft save가 Campaign 하나와 일관된 연결만 남기는 것을 검증했다.

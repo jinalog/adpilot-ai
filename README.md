@@ -2,7 +2,7 @@
 
 AdPilot AI는 자연어 캠페인 설정, 광고 성과 분석, 이상 탐지를 안전한 승인 흐름과 결합하는 AI 광고 운영 플랫폼입니다. 실제 광고 송출이나 광고 계정 변경이 아닌 합성 데이터 기반 포트폴리오 프로젝트이며, AI Backend/Agent Platform 설계 역량을 검증하는 것이 목적입니다.
 
-현재 상태는 **Phase 2 — AI Campaign Setup 완료**입니다. Campaign 관리 기능 위에 자연어 요청을 부분 초안으로 변환하고, 누락 질문·결정론적 검증·편집 가능한 미리보기·명시적 DRAFT 저장을 제공하는 LangGraph workflow를 추가했습니다. Performance Analyst와 성과 분석은 아직 구현하지 않았습니다.
+현재 상태는 **Phase 2.1 — AI Campaign Setup 안정화 완료**입니다. Campaign 관리 기능 위에 자연어 요청을 부분 초안으로 변환하고, 누락 질문·결정론적 검증·편집 가능한 미리보기·명시적 DRAFT 저장을 제공하는 LangGraph workflow를 추가했습니다. 구조화 필드 수정은 외부 provider 없이 처리하고, provider 실패와 동시 저장의 안전성도 검증했습니다. Performance Analyst와 성과 분석은 아직 구현하지 않았습니다.
 
 ## 목표 기능
 
@@ -179,6 +179,10 @@ curl -X POST http://localhost:8000/api/v1/ai/campaign-drafts/{draft_id}/save
 
 `READY`가 아닌 초안 저장과 저장 완료 초안의 보완은 `409`로 차단됩니다. 동일 draft save 재시도는 새 Campaign을 만들지 않고 연결된 ID를 반환합니다. 실제 OpenAI adapter는 구현되어 있지만 `AI_PROVIDER=openai`, API key, `AI_REAL_LLM_OPT_IN=true`가 모두 없으면 호출할 수 없습니다.
 
+`refine`에 `draft_updates`만 전달하면 LangGraph가 provider 추출을 명시적으로 건너뛰고 기존 초안과 병합한 뒤 누락·예산·날짜 validation을 그대로 실행합니다. 이 실행은 `not_used` mode, retry 0, token usage 없음으로 기록됩니다. 추가 자연어가 있으면 기존처럼 provider를 호출합니다. Provider 실패 시 이전 초안 값과 실제 누락 필드를 보존하지만 상태는 `PROVIDER_ERROR`로 유지하므로, 실패 전 READY 초안을 자동 저장 가능 상태로 되돌리지는 않습니다.
+
+동일 READY draft의 동시 save는 PostgreSQL `FOR UPDATE`와 단일 transaction으로 직렬화됩니다. 전용 PostgreSQL 통합 테스트에서 두 독립 Session이 동일 Campaign ID를 받고 Campaign 행은 하나만 생성되며, commit 실패 시 고아 Campaign이나 잘못된 draft 연결이 남지 않음을 검증합니다. 이는 AI draft save에 한정된 보장으로 Campaign 전체 optimistic concurrency는 포함하지 않습니다.
+
 Mock golden dataset 실행:
 
 ```bash
@@ -207,6 +211,7 @@ PYTHONPATH=backend python evaluations/run_campaign_setup_golden.py
 - [x] Phase 1: Campaign DB 모델, migration, CRUD, 상태 전이 및 API 테스트
 - [x] Phase 1.5: Streamlit Campaign Administration UI와 API client 테스트
 - [x] Phase 2: AI Campaign Setup Agent, 명시적 DRAFT 저장과 별도 승인 흐름
+- [x] Phase 2.1: 구조화 refine provider skip, 실패 초안 보존, PostgreSQL 동시 save 검증
 - [ ] Phase 3: 합성 광고 데이터, KPI, dashboard, 이상 탐지
 - [ ] Phase 4: 안전한 AI Performance Analyst
 - [ ] Phase 5: 평가, 신뢰성, 관측성, 부하 테스트

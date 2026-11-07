@@ -11,6 +11,8 @@ from app.schemas.campaign import CampaignCreate
 from app.services.campaign_service import CampaignService
 
 REQUIRED_FIELDS = tuple(PartialCampaignDraft.model_fields)
+PROVIDER_SKIPPED_MODE = "not_used"
+PROVIDER_SKIPPED_MODEL = "structured-updates-only"
 QUESTIONS = {
     "name": "캠페인명을 알려주세요.",
     "objective": "측정 가능한 광고 목표를 알려주세요.",
@@ -59,19 +61,28 @@ class CampaignSetupWorkflow:
     def _build_graph(self) -> Any:
         graph = StateGraph(CampaignSetupState)
         graph.add_node("extract_requirements", self.extract_requirements)
+        graph.add_node("skip_provider_extraction", self.skip_provider_extraction)
         graph.add_node("merge_context", self.merge_context)
         graph.add_node("check_missing_fields", self.check_missing_fields)
         graph.add_node("validate_draft", self.validate_draft)
         graph.add_node("prepare_preview", self.prepare_preview)
         graph.add_node("prepare_clarification", self.prepare_clarification)
         graph.add_node("handle_provider_error", self.handle_provider_error)
-        graph.add_edge(START, "extract_requirements")
+        graph.add_conditional_edges(
+            START,
+            self.route_provider_extraction,
+            {
+                "extract": "extract_requirements",
+                "skip": "skip_provider_extraction",
+            },
+        )
         graph.add_conditional_edges(
             "extract_requirements",
             lambda state: "error" if state.get("provider_error_code") else "ok",
             {"error": "handle_provider_error", "ok": "merge_context"},
         )
         graph.add_edge("merge_context", "check_missing_fields")
+        graph.add_edge("skip_provider_extraction", "merge_context")
         graph.add_conditional_edges(
             "check_missing_fields",
             lambda state: "missing" if state["missing_fields"] else "complete",
@@ -105,6 +116,24 @@ class CampaignSetupWorkflow:
             "model": self.provider.model,
         }
         return self.graph.invoke(initial)
+
+    @staticmethod
+    def route_provider_extraction(state: CampaignSetupState) -> str:
+        return "extract" if state.get("input_text", "").strip() else "skip"
+
+    @staticmethod
+    def skip_provider_extraction(_: CampaignSetupState) -> CampaignSetupState:
+        return {
+            "extracted_draft": {},
+            "retry_count": 0,
+            "latency_ms": 0,
+            "provider": PROVIDER_SKIPPED_MODE,
+            "model": PROVIDER_SKIPPED_MODEL,
+            "input_tokens": None,
+            "output_tokens": None,
+            "provider_error_code": None,
+            "failed_step": None,
+        }
 
     def extract_requirements(self, state: CampaignSetupState) -> CampaignSetupState:
         started = time.monotonic()
@@ -152,9 +181,11 @@ class CampaignSetupWorkflow:
 
     @staticmethod
     def check_missing_fields(state: CampaignSetupState) -> CampaignSetupState:
-        draft = state["draft"]
-        missing = [field for field in REQUIRED_FIELDS if draft.get(field) is None]
-        return {"missing_fields": missing}
+        return {"missing_fields": CampaignSetupWorkflow._missing_fields(state["draft"])}
+
+    @staticmethod
+    def _missing_fields(draft: dict[str, Any]) -> list[str]:
+        return [field for field in REQUIRED_FIELDS if draft.get(field) is None]
 
     @staticmethod
     def validate_draft(state: CampaignSetupState) -> CampaignSetupState:
@@ -188,10 +219,11 @@ class CampaignSetupWorkflow:
 
     @staticmethod
     def handle_provider_error(state: CampaignSetupState) -> CampaignSetupState:
+        preserved_draft = dict(state.get("current_draft", {}))
         return {
             "status": DraftStatus.PROVIDER_ERROR.value,
-            "draft": dict(state.get("current_draft", {})),
-            "missing_fields": list(REQUIRED_FIELDS),
+            "draft": preserved_draft,
+            "missing_fields": CampaignSetupWorkflow._missing_fields(preserved_draft),
             "validation_errors": [],
             "clarification_questions": [],
         }

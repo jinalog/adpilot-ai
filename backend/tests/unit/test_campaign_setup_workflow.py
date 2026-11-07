@@ -79,6 +79,50 @@ def test_incomplete_request_and_refinement_preserve_existing_values() -> None:
     assert result["draft"]["name"] == "Launch"
 
 
+def test_structured_updates_only_skip_provider_and_can_make_draft_ready() -> None:
+    provider = SequenceProvider([])
+    workflow = CampaignSetupWorkflow(provider, timeout_seconds=1, max_retries=2)
+    initial = PartialCampaignDraft(name="Launch", objective="Install")
+    updates = complete_draft(name=None, objective=None)
+
+    result = workflow.run("   ", current_draft=initial, explicit_updates=updates)
+
+    assert result["status"] == "READY"
+    assert result["draft"]["name"] == "Launch"
+    assert result["provider"] == "not_used"
+    assert result["model"] == "structured-updates-only"
+    assert result["retry_count"] == 0
+    assert result["input_tokens"] is None
+    assert result["output_tokens"] is None
+    assert provider.calls == 0
+
+
+def test_structured_updates_only_still_run_deterministic_validation() -> None:
+    provider = SequenceProvider([])
+    workflow = CampaignSetupWorkflow(provider, timeout_seconds=1, max_retries=2)
+
+    result = workflow.run(
+        "",
+        current_draft=complete_draft(),
+        explicit_updates=PartialCampaignDraft(daily_budget_krw=1_000_001),
+    )
+
+    assert result["status"] == "VALIDATION_FAILED"
+    assert "cannot exceed" in result["validation_errors"][0]
+    assert provider.calls == 0
+
+
+def test_additional_input_calls_provider() -> None:
+    provider = SequenceProvider([provider_result(PartialCampaignDraft(objective="Conversion"))])
+    workflow = CampaignSetupWorkflow(provider, timeout_seconds=1, max_retries=2)
+
+    result = workflow.run("목표: Conversion", current_draft=complete_draft())
+
+    assert result["status"] == "READY"
+    assert result["draft"]["objective"] == "Conversion"
+    assert provider.calls == 1
+
+
 def test_missing_and_domain_validation_use_distinct_branches() -> None:
     missing_workflow = CampaignSetupWorkflow(
         SequenceProvider([provider_result(PartialCampaignDraft(name="Only name"))]),
@@ -125,6 +169,27 @@ def test_non_retryable_and_schema_errors_fail_immediately() -> None:
         assert result["status"] == "PROVIDER_ERROR"
         assert provider.calls == 1
         assert result["retry_count"] == 0
+
+
+def test_provider_error_preserves_current_draft_and_reports_only_real_missing_fields() -> None:
+    provider = SequenceProvider([ProviderError()])
+    workflow = CampaignSetupWorkflow(provider, timeout_seconds=1, max_retries=2)
+    current = PartialCampaignDraft(name="Launch", objective="Install")
+
+    result = workflow.run("new details", current_draft=current)
+
+    assert result["status"] == "PROVIDER_ERROR"
+    assert result["draft"] == {"name": "Launch", "objective": "Install"}
+    assert result["missing_fields"] == [
+        "total_budget_krw",
+        "daily_budget_krw",
+        "start_date",
+        "end_date",
+        "channels",
+        "targeting",
+    ]
+    assert result["provider_error_code"] == "provider_error"
+    assert result["failed_step"] == "extract_requirements"
 
 
 def test_prompt_injection_is_only_passed_to_extractor_without_tool_access() -> None:

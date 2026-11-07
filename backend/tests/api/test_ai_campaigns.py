@@ -56,8 +56,15 @@ def test_refine_preserves_existing_values_and_creates_run_history(
     assert response.status_code == 200
     assert response.json()["status"] == "READY"
     assert response.json()["draft"]["name"] == "보완 캠페인"
+    assert response.json()["provider_mode"] == "not_used"
+    assert response.json()["retry_count"] == 0
     with db_session_factory() as session:
         assert session.scalar(select(func.count(AgentRun.id))) == 2
+        skipped_run = session.scalar(select(AgentRun).where(AgentRun.provider == "not_used"))
+        assert skipped_run is not None
+        assert skipped_run.model == "structured-updates-only"
+        assert skipped_run.input_tokens is None
+        assert skipped_run.output_tokens is None
 
 
 def test_non_ready_save_is_blocked(client: TestClient) -> None:

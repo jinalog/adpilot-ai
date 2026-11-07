@@ -95,3 +95,11 @@
 선택: `READY` 초안 저장은 해당 draft 행을 잠그고 기존 `CampaignService.create()`의 검증·생성 경로를 같은 transaction에서 재사용한다. draft에 연결된 Campaign ID가 있으면 이를 그대로 반환한다. 저장 완료 후 refine과 추가 저장에 의한 변경은 차단하되, 동일 save 재시도는 성공한 기존 Campaign을 반환한다.
 
 대안: Campaign 전체에 optimistic concurrency/version을 추가하는 방식은 Phase 2 범위를 넘으므로 구현하지 않고 후속 backlog로 유지한다.
+
+## ADR-017: 구조화 보완과 Provider 실패를 workflow에서 분리
+
+선택: refine의 `additional_input`에 공백이 아닌 텍스트가 있을 때만 provider 추출 노드를 실행한다. `draft_updates`만 있으면 LangGraph 시작 conditional edge가 `skip_provider_extraction`으로 분기하고, 기존 초안과 명시적 수정값을 병합한 뒤 동일한 누락 확인과 결정론적 validation을 수행한다. 이 실행은 provider/model을 `not_used`/`structured-updates-only`, retry를 0, token usage를 `null`로 기록한다.
+
+Provider 실패 시 저장된 기존 초안을 보존하고 실제 초안 기준으로 누락 필드를 다시 계산한다. 상태는 `PROVIDER_ERROR`로 유지하며 안전한 오류 코드와 실패 단계만 기록한다. 이전 초안이 `READY`였더라도 실패한 보완 요청을 무시해 자동으로 저장 가능 상태로 되돌리지 않는다. 사용자는 성공한 refine을 다시 수행해야 하며, 이는 실패한 사용자 의도를 조용히 폐기하지 않기 위한 안전 정책이다.
+
+검증: 전용 PostgreSQL에서 두 독립 Session이 동일 READY draft를 겹쳐 저장하는 테스트를 수행했다. 첫 transaction의 `FOR UPDATE` 잠금 중 두 번째 요청이 대기한 뒤 두 응답이 같은 Campaign ID를 반환하고 Campaign 행이 하나임을 확인했다. commit 실패 주입 시 Campaign과 draft 연결이 함께 rollback되는 것도 확인했다. Campaign 전체 optimistic concurrency는 여전히 범위 밖이다.
