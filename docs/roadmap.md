@@ -18,7 +18,7 @@
 
 ## Phase 3 — Advertising Analytics
 
-**완료.** 70일·6 Campaign·420행의 seed 고정 합성 데이터와 별도 anomaly truth label, raw-first KPI service/API, Streamlit Performance Dashboard, 7일 baseline 규칙 detector를 구현했다. seed 재현성, 0 나눗셈 `null`, DB 제약·소유 데이터 교체, dataset/Campaign/기간 필터, known anomaly 4건의 precision/recall/F1 회귀를 단위·API·PostgreSQL 통합 테스트와 실제 Docker 환경에서 검증했다.
+**완료.** 70일·6 Campaign·420행의 seed 고정 합성 데이터와 별도 anomaly truth label, raw-first KPI service/API, Streamlit Performance Dashboard, 7일 baseline 규칙 detector를 구현했다. seed 재현성, 0 나눗셈 `null`, DB 제약·소유 데이터 교체, dataset/Campaign/기간 필터, known anomaly 4건의 precision/recall/F1 회귀를 단위·API·PostgreSQL 통합 테스트와 실제 Docker 환경에서 검증했다. 안정화 단계에서 anomaly baseline을 dataset run과 Campaign의 복합 키로 격리하고 KPI·추세 화면의 가독성을 개선했다.
 
 ## Phase 4 — AI Performance Analyst
 

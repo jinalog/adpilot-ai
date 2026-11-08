@@ -110,9 +110,9 @@ def round_money(value: Decimal | None) -> Decimal | None:
 
 
 def detect_anomalies(metrics: Iterable[MetricValue]) -> list[AnomalyDetection]:
-    grouped: dict[uuid.UUID, list[MetricValue]] = defaultdict(list)
+    grouped: dict[tuple[uuid.UUID, uuid.UUID], list[MetricValue]] = defaultdict(list)
     for metric in metrics:
-        grouped[metric.campaign_id].append(metric)
+        grouped[(metric.dataset_run_id, metric.campaign_id)].append(metric)
 
     detections: list[AnomalyDetection] = []
     for campaign_metrics in grouped.values():

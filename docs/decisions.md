@@ -117,3 +117,11 @@ KPI는 원시 합계를 먼저 합산한 뒤 `Decimal`로 계산한다. CTR=`cli
 `anomaly_truth_labels`는 생성 시 주입한 정답만 저장하고 detector는 이를 읽지 않는다. truth가 없는 `(run, campaign, date, type)` 조합은 평가에서 negative다. detector 결과는 threshold나 version 변경 시 stale 상태를 피하기 위해 저장하지 않고 원시 metric에서 요청 시 계산한다. 평가 runner만 truth와 detector key를 비교하며 precision/recall/F1의 분모가 0이면 `null`로 반환한다.
 
 Phase 4가 재사용할 read-only 계약은 `synthetic_dataset_runs`, `campaigns`의 합성 소유 FK, `daily_ad_metrics` 원시 정수와 공개 analytics 조회 응답이다. truth label은 평가 전용이며 제품 anomaly API나 향후 Analyst의 사실 데이터로 노출하지 않는다. PostgreSQL 단일 저장소를 유지하고 microservice, Kafka, Redis, DuckDB는 도입하지 않는다.
+
+## ADR-019: Anomaly baseline 격리와 Dashboard chart data 최소화
+
+선택: `rules-v1` detector의 그룹 키를 `campaign_id` 단독이 아닌 `(dataset_run_id, campaign_id)`로 사용한다. 동일한 Campaign UUID가 여러 합성 dataset에 존재해도 날짜 맵, 7일 baseline과 detection은 run 경계를 넘지 않는다. 임계값, 최소 표본, 정확한 이전 7 calendar day, truth 비참조 정책은 변경하지 않는다.
+
+Performance Dashboard의 KPI는 3개 행으로 나누고 Spend/Revenue는 원화 정수, 비용형 KPI는 소수점 둘째 자리로 표시한다. 추세는 Impressions, Clicks/Conversions, Spend/Revenue, CTR/CVR 네 그래프로 분리한다. Frontend는 직접 `pandas`를 import하지 않고 list-of-records를 Streamlit chart API에 전달한다.
+
+대안: `pandas`를 frontend optional dependency로 명시하는 방법도 가능하지만 현재 변환은 단순 필드 매핑이라 DataFrame 연산이 필요하지 않다. 직접 사용을 제거하면 공개 dependency가 줄고 Streamlit 내부 dependency 버전에 대한 암묵적 결합도 사라진다. 데이터 변환이 복잡해질 때만 명시적 pandas 도입을 다시 검토한다.

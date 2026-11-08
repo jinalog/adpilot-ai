@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -15,6 +16,7 @@ from app.domain.analytics import (
 )
 
 RUN_ID = uuid.UUID("10000000-0000-0000-0000-000000000001")
+OTHER_RUN_ID = uuid.UUID("10000000-0000-0000-0000-000000000002")
 CAMPAIGN_ID = uuid.UUID("20000000-0000-0000-0000-000000000001")
 START = date(2026, 9, 1)
 
@@ -27,9 +29,10 @@ def metric(
     conversions: int = 10,
     spend_krw: int = 100_000,
     revenue_krw: int = 300_000,
+    dataset_run_id: uuid.UUID = RUN_ID,
 ) -> MetricValue:
     return MetricValue(
-        dataset_run_id=RUN_ID,
+        dataset_run_id=dataset_run_id,
         campaign_id=CAMPAIGN_ID,
         date=START + timedelta(days=day),
         impressions=impressions,
@@ -121,6 +124,55 @@ def test_detector_holds_when_baseline_or_minimum_sample_is_insufficient() -> Non
     assert AnomalyType.CVR_DROP not in {
         item.anomaly_type for item in detect_anomalies([*normal_baseline, low_click])
     }
+
+
+def test_detector_isolates_same_campaign_uuid_by_dataset_run() -> None:
+    first_run = [metric(index) for index in range(7)]
+    first_run.append(metric(7, clicks=20, conversions=2))
+    second_run = [metric(index, dataset_run_id=OTHER_RUN_ID) for index in range(8)]
+
+    ctr_detections = [
+        item
+        for item in detect_anomalies([*first_run, *second_run])
+        if item.anomaly_type is AnomalyType.CTR_DROP
+    ]
+
+    assert [(item.dataset_run_id, item.campaign_id) for item in ctr_detections] == [
+        (RUN_ID, CAMPAIGN_ID)
+    ]
+
+
+def test_anomaly_in_one_dataset_does_not_change_other_dataset_result() -> None:
+    stable_run = [metric(index) for index in range(8)]
+    changed_run = [metric(index, dataset_run_id=OTHER_RUN_ID) for index in range(7)]
+    changed_run.append(metric(7, spend_krw=200_000, dataset_run_id=OTHER_RUN_ID))
+
+    spend_detections = [
+        item
+        for item in detect_anomalies([*stable_run, *changed_run])
+        if item.anomaly_type is AnomalyType.SPEND_SPIKE
+    ]
+
+    assert [item.dataset_run_id for item in spend_detections] == [OTHER_RUN_ID]
+
+
+def test_detector_requires_seven_contiguous_prior_calendar_days() -> None:
+    baseline_with_gap = [metric(index) for index in (0, 1, 2, 3, 4, 5, 7)]
+    current = metric(8, clicks=20, conversions=2)
+
+    assert detect_anomalies([*baseline_with_gap, current]) == []
+
+
+def test_detector_keeps_seven_day_baseline_across_year_boundary() -> None:
+    year_end_start = date(2026, 12, 25)
+    metrics = [
+        replace(metric(index), date=year_end_start + timedelta(days=index)) for index in range(7)
+    ]
+    current = replace(metric(7, clicks=20, conversions=2), date=date(2027, 1, 1))
+
+    detections = detect_anomalies([*metrics, current])
+
+    assert AnomalyType.CTR_DROP in {item.anomaly_type for item in detections}
 
 
 def test_evaluation_counts_tp_fp_fn_and_zero_denominators() -> None:

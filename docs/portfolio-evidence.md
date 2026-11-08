@@ -125,12 +125,16 @@ Phase 3 이미지는 기존 개발 DB와 분리한 `adpilot-phase3` Compose 프�
 - 검증 내용: Streamlit이 FastAPI REST만 호출해 격리 PostgreSQL의 합성 KPI를 렌더링하고 합성 데이터임을 명시함
 - 데이터: 고정 seed 합성 테스트 데이터
 
+2026-11-08 안정화에서 KPI를 3개 행으로 재배치하고 Spend/Revenue를 원화 정수로 표시해 큰 값의 잘림을 제거했습니다. 비용형 KPI는 소수점 둘째 자리까지 유지하며 0분모는 `N/A (분모 0)`로 구분합니다.
+
 ![Daily performance trends](assets/screenshots/phase-3/02-daily-trends.png)
 
 - 화면: 일별 성과 추세
 - 구현 기능: impressions/clicks/conversions, spend/revenue, CTR/CVR 시계열
 - 검증 내용: 2026-09-01부터 2026-11-09까지 inclusive 일별 집계와 삽입 anomaly 구간이 실제 API 응답으로 표시됨
 - 데이터: 고정 seed 합성 테스트 데이터
+
+2026-11-08 안정화에서 추세를 Impressions, Clicks/Conversions, Spend/Revenue, CTR/CVR 네 그래프로 분리하고 제목·단위·범례를 명시했습니다. Detector baseline은 `(dataset_run_id, campaign_id)` 단위로 격리되며 서로 다른 dataset run의 동일 Campaign UUID가 섞이지 않는 회귀 테스트를 추가했습니다.
 
 ![Campaign comparison](assets/screenshots/phase-3/03-campaign-comparison.png)
 

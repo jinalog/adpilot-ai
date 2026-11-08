@@ -1,7 +1,6 @@
 from datetime import date
 from typing import Any
 
-import pandas as pd
 import streamlit as st
 
 from api_client.client import AdPilotApiClient, ApiClientError
@@ -10,14 +9,32 @@ from views.common import show_api_error
 
 def format_nullable(value: float | int | None, *, kind: str) -> str:
     if value is None:
-        return "N/A"
+        return "N/A (분모 0)"
     if kind == "percent":
         return f"{float(value) * 100:.2f}%"
+    if kind == "money_integer":
+        return f"₩{int(value):,}"
     if kind == "money":
         return f"₩{float(value):,.2f}"
     if kind == "ratio":
         return f"{float(value):.2f}x"
     return f"{int(value):,}"
+
+
+def build_timeseries_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "Date": item["date"],
+            "Impressions": item["totals"]["impressions"],
+            "Clicks": item["totals"]["clicks"],
+            "Conversions": item["totals"]["conversions"],
+            "Spend (KRW)": item["totals"]["spend_krw"],
+            "Revenue (KRW)": item["totals"]["revenue_krw"],
+            "CTR (%)": (item["kpis"]["ctr"] * 100 if item["kpis"]["ctr"] is not None else None),
+            "CVR (%)": (item["kpis"]["cvr"] * 100 if item["kpis"]["cvr"] is not None else None),
+        }
+        for item in items
+    ]
 
 
 def build_anomaly_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -113,42 +130,60 @@ def render_performance_dashboard(client: AdPilotApiClient) -> None:
 def _render_kpis(summary: dict[str, Any]) -> None:
     totals = summary["totals"]
     kpis = summary["kpis"]
-    raw = [
-        ("Impressions", totals["impressions"], "count"),
-        ("Clicks", totals["clicks"], "count"),
-        ("Conversions", totals["conversions"], "count"),
-        ("Spend", totals["spend_krw"], "money"),
-        ("Revenue", totals["revenue_krw"], "money"),
+    rows = [
+        [
+            ("Impressions", totals["impressions"], "count"),
+            ("Clicks", totals["clicks"], "count"),
+            ("Conversions", totals["conversions"], "count"),
+        ],
+        [
+            ("Spend", totals["spend_krw"], "money_integer"),
+            ("Revenue", totals["revenue_krw"], "money_integer"),
+            ("CTR", kpis["ctr"], "percent"),
+            ("CVR", kpis["cvr"], "percent"),
+        ],
+        [
+            ("CPM", kpis["cpm_krw"], "money"),
+            ("CPC", kpis["cpc_krw"], "money"),
+            ("CPA", kpis["cpa_krw"], "money"),
+            ("ROAS", kpis["roas"], "ratio"),
+        ],
     ]
-    derived = [
-        ("CTR", kpis["ctr"], "percent"),
-        ("CVR", kpis["cvr"], "percent"),
-        ("CPM", kpis["cpm_krw"], "money"),
-        ("CPC", kpis["cpc_krw"], "money"),
-        ("CPA", kpis["cpa_krw"], "money"),
-        ("ROAS", kpis["roas"], "ratio"),
-    ]
-    for values in (raw, derived):
+    for values in rows:
         columns = st.columns(len(values))
         for column, (label, value, kind) in zip(columns, values, strict=True):
             column.metric(label, format_nullable(value, kind=kind))
 
 
 def _render_timeseries(items: list[dict[str, Any]]) -> None:
-    rows = [
-        {
-            "date": item["date"],
-            **item["totals"],
-            "ctr_percent": (item["kpis"]["ctr"] * 100 if item["kpis"]["ctr"] is not None else None),
-            "cvr_percent": (item["kpis"]["cvr"] * 100 if item["kpis"]["cvr"] is not None else None),
-        }
-        for item in items
-    ]
-    frame = pd.DataFrame(rows).set_index("date")
+    rows = build_timeseries_rows(items)
     st.subheader("일별 성과 추세")
-    st.line_chart(frame[["impressions", "clicks", "conversions"]])
-    st.line_chart(frame[["spend_krw", "revenue_krw"]])
-    st.line_chart(frame[["ctr_percent", "cvr_percent"]])
+    st.markdown("#### Impressions")
+    st.line_chart(rows, x="Date", y=["Impressions"], x_label="날짜", y_label="노출 수 (건)")
+    st.markdown("#### Clicks / Conversions")
+    st.line_chart(
+        rows,
+        x="Date",
+        y=["Clicks", "Conversions"],
+        x_label="날짜",
+        y_label="건수 (건)",
+    )
+    st.markdown("#### Spend / Revenue")
+    st.line_chart(
+        rows,
+        x="Date",
+        y=["Spend (KRW)", "Revenue (KRW)"],
+        x_label="날짜",
+        y_label="금액 (KRW)",
+    )
+    st.markdown("#### CTR / CVR")
+    st.line_chart(
+        rows,
+        x="Date",
+        y=["CTR (%)", "CVR (%)"],
+        x_label="날짜",
+        y_label="비율 (%)",
+    )
 
 
 def _render_campaign_comparison(items: list[dict[str, Any]]) -> None:

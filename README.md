@@ -212,7 +212,9 @@ curl 'http://localhost:8000/api/v1/analytics/anomalies?dataset_run_id={dataset_i
 
 KPI는 원시 합계를 먼저 더한 뒤 `CTR=clicks/impressions`, `CVR=conversions/clicks`, `CPM=spend/impressions×1000`, `CPC=spend/clicks`, `CPA=spend/conversions`, `ROAS=revenue/spend`로 계산합니다. 분모가 0이면 `0`을 만들지 않고 `null`을 반환합니다. 기간은 양 끝 날짜를 포함하며 최대 366일입니다.
 
-`rules-v1`은 각 Campaign의 정확한 이전 7개 calendar day를 baseline으로 사용합니다. CTR 60% 이하, CVR 50% 이하, spend 180% 이상, impressions 50% 이하를 각각 탐지하되 최소 노출/클릭과 0 baseline guard를 적용합니다. 기본 합성 truth 4건에 대한 실제 회귀 실행 결과는 TP 4, FP 0, FN 0, precision/recall/F1 1.0입니다. 이는 의도적으로 만든 합성 데이터 회귀 결과이며 실제 광고 운영 정확도를 의미하지 않습니다.
+`rules-v1`은 `(dataset_run_id, campaign_id)`별로 격리한 정확한 이전 7개 calendar day를 baseline으로 사용합니다. 같은 Campaign UUID가 다른 합성 dataset에 있어도 baseline을 공유하지 않습니다. CTR 60% 이하, CVR 50% 이하, spend 180% 이상, impressions 50% 이하를 각각 탐지하되 최소 노출/클릭과 0 baseline guard를 적용합니다. 기본 합성 truth 4건에 대한 실제 회귀 실행 결과는 TP 4, FP 0, FN 0, precision/recall/F1 1.0입니다. 이는 의도적으로 만든 합성 데이터 회귀 결과이며 실제 광고 운영 정확도를 의미하지 않습니다.
+
+Performance Dashboard는 KPI를 세 행으로 나눠 큰 KRW 합계가 잘리지 않게 표시하고, Spend/Revenue는 원화 정수, CPM/CPC/CPA는 소수점 둘째 자리까지 표시합니다. 일별 추세는 Impressions, Clicks/Conversions, Spend/Revenue, CTR/CVR 네 그래프로 분리해 단위와 스케일을 구분합니다. Frontend는 직접 `pandas`를 사용하지 않고 Streamlit의 chart data contract에 list-of-records를 전달합니다.
 
 ## 환경 변수
 

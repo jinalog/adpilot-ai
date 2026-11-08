@@ -53,7 +53,9 @@ LangGraph는 입력 텍스트 유무를 판단하는 시작 conditional edge, `e
 
 고정 seed generator → dataset run과 소유 Campaign → 일별 raw metric → FastAPI application service → 결정론적 KPI/규칙 detector → Streamlit REST client 순서다. KPI는 Campaign·기간의 raw 합계를 먼저 집계한 뒤 계산하며 0 분모는 `null`이다. 조회 기간은 inclusive, 최대 366일이고 Campaign 필터는 선택한 dataset 소유 여부를 검사한다.
 
-`rules-v1` detector는 현재일을 제외한 정확한 이전 7 calendar day를 Campaign별 baseline으로 사용한다. `anomaly_truth_labels`는 generator와 평가 runner만 읽으며, 제품의 `/analytics/anomalies`는 raw metric으로 매 요청 계산한 detection만 반환한다. 따라서 정답을 결과로 노출하거나 detector가 정답을 참조하지 않는다.
+`rules-v1` detector는 현재일을 제외한 정확한 이전 7 calendar day를 `(dataset_run_id, campaign_id)`별 baseline으로 사용한다. Campaign UUID가 우연히 같아도 서로 다른 dataset run의 metric은 같은 날짜 맵이나 baseline에 들어가지 않는다. `anomaly_truth_labels`는 generator와 평가 runner만 읽으며, 제품의 `/analytics/anomalies`는 raw metric으로 매 요청 계산한 detection만 반환한다. 따라서 정답을 결과로 노출하거나 detector가 정답을 참조하지 않는다.
+
+Performance Dashboard는 FastAPI 응답을 list-of-records chart data로 변환해 Streamlit에 전달한다. Frontend 코드가 `pandas`를 직접 import하지 않아 Streamlit의 transitive dependency를 프로젝트 API처럼 취급하지 않는다. KPI는 3개 행, 추세는 4개 단위별 그래프로 나누며 계산식은 계속 Backend domain에만 둔다.
 
 ### AI Performance Analyst (Phase 4, 미구현)
 

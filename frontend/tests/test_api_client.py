@@ -19,7 +19,7 @@ from views.ai_campaign_setup import (
     complete_saved_draft,
 )
 from views.common import format_budget, parse_targeting
-from views.performance_dashboard import build_anomaly_rows, format_nullable
+from views.performance_dashboard import build_anomaly_rows, build_timeseries_rows, format_nullable
 
 
 def response(
@@ -277,8 +277,9 @@ def test_analytics_client_uses_dataset_campaign_and_date_filters() -> None:
 
 
 def test_performance_dashboard_helpers_show_null_and_anomaly_contract() -> None:
-    assert format_nullable(None, kind="percent") == "N/A"
+    assert format_nullable(None, kind="percent") == "N/A (분모 0)"
     assert format_nullable(0.1234, kind="percent") == "12.34%"
+    assert format_nullable(71_593_179, kind="money_integer") == "₩71,593,179"
     assert format_nullable(1234.5, kind="money") == "₩1,234.50"
     rows = build_anomaly_rows(
         [
@@ -295,3 +296,34 @@ def test_performance_dashboard_helpers_show_null_and_anomaly_contract() -> None:
     )
     assert rows[0]["Type"] == "CTR_DROP"
     assert rows[0]["Change"] == "60.0%"
+
+
+def test_performance_dashboard_timeseries_rows_keep_units_and_null_rates() -> None:
+    rows = build_timeseries_rows(
+        [
+            {
+                "date": "2026-09-01",
+                "totals": {
+                    "impressions": 100,
+                    "clicks": 0,
+                    "conversions": 0,
+                    "spend_krw": 1_000,
+                    "revenue_krw": 0,
+                },
+                "kpis": {"ctr": 0.0, "cvr": None},
+            }
+        ]
+    )
+
+    assert rows == [
+        {
+            "Date": "2026-09-01",
+            "Impressions": 100,
+            "Clicks": 0,
+            "Conversions": 0,
+            "Spend (KRW)": 1_000,
+            "Revenue (KRW)": 0,
+            "CTR (%)": 0.0,
+            "CVR (%)": None,
+        }
+    ]
