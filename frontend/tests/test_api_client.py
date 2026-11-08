@@ -276,6 +276,24 @@ def test_analytics_client_uses_dataset_campaign_and_date_filters() -> None:
     }
 
 
+def test_performance_analyst_client_posts_question_without_raw_sql() -> None:
+    session = FakeSession([response(200, {"status": "READY", "facts": []})])
+    client = AdPilotApiClient("http://backend/api/v1", session=session)  # type: ignore[arg-type]
+    payload = {
+        "dataset_run_id": "dataset-id",
+        "question": "CTR을 요약해 주세요.",
+        "campaign_id": "campaign-id",
+    }
+
+    result = client.ask_performance_analyst(payload)
+
+    assert result["status"] == "READY"
+    assert session.calls[0]["method"] == "POST"
+    assert session.calls[0]["url"] == "http://backend/api/v1/analyst/questions"
+    assert session.calls[0]["json"] == payload
+    assert "sql" not in session.calls[0]["json"]
+
+
 def test_performance_dashboard_helpers_show_null_and_anomaly_contract() -> None:
     assert format_nullable(None, kind="percent") == "N/A (분모 0)"
     assert format_nullable(0.1234, kind="percent") == "12.34%"

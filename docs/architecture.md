@@ -57,9 +57,15 @@ LangGraph는 입력 텍스트 유무를 판단하는 시작 conditional edge, `e
 
 Performance Dashboard는 FastAPI 응답을 list-of-records chart data로 변환해 Streamlit에 전달한다. Frontend 코드가 `pandas`를 직접 import하지 않아 Streamlit의 transitive dependency를 프로젝트 API처럼 취급하지 않는다. KPI는 3개 행, 추세는 4개 단위별 그래프로 나누며 계산식은 계속 Backend domain에만 둔다.
 
-### AI Performance Analyst (Phase 4, 미구현)
+### AI Performance Analyst (Phase 4)
 
-향후 질문 → 분석 계획/제한된 SQL 후보 → AST 및 allowlist 검사 → read-only timeout 실행 → 결정론적 KPI → LLM 설명 흐름을 추가한다. Phase 3의 raw metric과 KPI API를 재사용하며 응답은 `facts`, `hypotheses`, `recommendations`, `evidence`를 분리한다. 현재 자연어 SQL과 LLM 설명은 구현하지 않았다.
+자연어 질문 → Mock planning provider의 구조화 `AnalysisPlan` → 결정론적 SQL compiler → sqlglot PostgreSQL AST validator → 격리된 read-only executor → Phase 3 KPI/domain 계산 → `facts`, `hypotheses`, `recommendations`, `evidence` 응답 순서다. Provider는 SQL, DB connection, 실행 tool을 받지 않으며 공개 API도 raw SQL 필드를 허용하지 않는다.
+
+Compiler는 질문 유형별 고정 template과 SQLAlchemy named bind parameter만 사용하고 모든 쿼리에 `dataset_run_id`, 기간, 선택 Campaign과 `LIMIT :fetch_limit`을 강제한다. Validator는 compiler와 독립적으로 단일 SELECT/제한 CTE, table·column·function allowlist, multi-statement/comment/wildcard/locking/DDL/DML/system catalog/truth table 차단을 확인한다. 두 경계를 모두 통과한 query만 infrastructure executor에 전달된다.
+
+Executor는 별도 PostgreSQL connection의 transaction을 `READ ONLY`로 시작하고 `set_config('statement_timeout', ..., true)`를 적용한다. 기본 응답 limit은 100, 절대 최대는 500이며 한 행을 더 조회해 초과 여부를 `truncated`로 표시한다. 실패 transaction은 rollback되고 DB 원문 오류는 `query_timeout` 또는 `query_execution_failed`로 축약된다.
+
+수치 fact는 SQL raw totals와 Phase 3의 `calculate_kpis`에서만 생성하고 evidence ID, dataset, Campaign, 기간, metric, query fingerprint, row count와 근거 값을 연결한다. 변화 원인은 확인이 필요한 hypothesis로, 조치는 자동 적용되지 않는 recommendation으로 분리한다. `anomaly_truth_labels`는 evaluation runner 외의 Analyst 경로에서 접근하지 않는다.
 
 ## Agent Workflow 원칙
 

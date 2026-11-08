@@ -7,11 +7,13 @@ from views.campaign_detail import render_campaign_detail
 from views.campaign_list import render_campaign_list
 from views.common import show_flash
 from views.dashboard import render_dashboard
+from views.performance_analyst import render_performance_analyst
 from views.performance_dashboard import render_performance_dashboard
 
 PAGES = (
     "Dashboard",
     "Performance Dashboard",
+    "Performance Analyst",
     "Campaign List",
     "Campaign Create",
     "AI Campaign Setup",
@@ -20,7 +22,7 @@ PAGES = (
 
 st.set_page_config(page_title="AdPilot AI", page_icon="✈️", layout="wide")
 st.title("AdPilot AI")
-st.caption("Campaign Administration · Synthetic Analytics · Phase 3")
+st.caption("Campaign Administration · Synthetic Analytics · Safe Analyst · Phase 4")
 
 
 def navigate(page: str, campaign_id: str | None = None) -> None:
@@ -51,6 +53,8 @@ if current_page == "Dashboard":
     render_dashboard(api_client)
 elif current_page == "Performance Dashboard":
     render_performance_dashboard(api_client)
+elif current_page == "Performance Analyst":
+    render_performance_analyst(api_client)
 elif current_page == "Campaign List":
     render_campaign_list(api_client, navigate)
 elif current_page == "Campaign Create":

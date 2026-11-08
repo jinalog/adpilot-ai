@@ -125,3 +125,13 @@ Phase 4가 재사용할 read-only 계약은 `synthetic_dataset_runs`, `campaigns
 Performance Dashboard의 KPI는 3개 행으로 나누고 Spend/Revenue는 원화 정수, 비용형 KPI는 소수점 둘째 자리로 표시한다. 추세는 Impressions, Clicks/Conversions, Spend/Revenue, CTR/CVR 네 그래프로 분리한다. Frontend는 직접 `pandas`를 import하지 않고 list-of-records를 Streamlit chart API에 전달한다.
 
 대안: `pandas`를 frontend optional dependency로 명시하는 방법도 가능하지만 현재 변환은 단순 필드 매핑이라 DataFrame 연산이 필요하지 않다. 직접 사용을 제거하면 공개 dependency가 줄고 Streamlit 내부 dependency 버전에 대한 암묵적 결합도 사라진다. 데이터 변환이 복잡해질 때만 명시적 pandas 도입을 다시 검토한다.
+
+## ADR-020: Provider planning과 결정론적 SQL 실행 경계
+
+선택: Performance Analyst Provider는 Pydantic `AnalysisPlan`만 반환한다. SQL은 질문 유형별 고정 template을 가진 Backend compiler가 named bind parameter로 생성하며, compiler 결과도 별도의 PostgreSQL AST validator를 반드시 통과한다. Provider에는 DB connection, schema 탐색, SQL 문자열이나 실행 tool을 제공하지 않는다. 공개 API와 Streamlit에도 raw SQL 입력을 만들지 않는다.
+
+AST parser는 `sqlglot`을 직접 dependency로 추가한다. 정규식만으로 nested query, alias, CTE, locking과 multi-statement 구조를 안전하게 판별할 수 없기 때문이다. 대안인 `pglast`는 PostgreSQL 결합이 더 강하고 AST 순회 API 유지비가 크며, SQLAlchemy expression만 사용하는 방식은 compiler 안전성은 높이지만 별도 validator와 악성 corpus 검증 경계를 증명하기 어렵다. sqlglot version range를 제한하고 40건 safety corpus로 upgrade 회귀를 관리한다.
+
+Executor는 PostgreSQL transaction을 read-only로 설정하고 statement timeout 기본 2.5초, 결과 기본 100행, 절대 최대 500행을 적용한다. 초과 결과는 `truncated=true`로 표시하며 실패는 rollback한다. AST allowlist는 `daily_ad_metrics`, `campaigns`, 필요한 raw column과 `SUM`만 허용하고 `anomaly_truth_labels`, Campaign draft/run table, system catalog, 파일·network·지연 함수와 write/locking 문장을 차단한다.
+
+수치 fact는 raw totals를 먼저 합산한 뒤 Phase 3 KPI 함수를 재사용한다. 불확실한 원인은 `requires_confirmation=true` hypothesis, 조치는 `auto_applied=false` recommendation으로 분리한다. Analyst는 Campaign 상태·예산·타게팅 변경 API와 연결하지 않는다. 실행 이력 table은 Phase 4 수용 기준에 필요하지 않아 추가하지 않으며 원문 질문/provider 응답도 저장하지 않는다.

@@ -37,7 +37,8 @@ MVP 이후 후보는 creative 생성·심사, OpenRTB simulator, incident detect
 - 실제 광고 계정이나 외부 운영 설정 변경
 - 실사용자 개인정보 또는 실제 광고 성과 데이터
 - 승인 없는 자동 예산/타게팅 변경 및 복구
-- 자연어 SQL, RAG, AI 원인 분석 및 실제 광고 연동
+- 사용자가 임의 SQL을 입력·실행하거나 LLM이 SQL을 직접 생성·실행하는 자연어 SQL
+- RAG, 근거 없이 외부 원인을 사실로 단정하는 AI 원인 분석, 실제 광고 연동
 - 제품 API를 통한 anomaly truth label 노출
 - 초기 MVP의 마이크로서비스, Kafka, Kubernetes
 
@@ -50,6 +51,7 @@ MVP 이후 후보는 creative 생성·심사, OpenRTB simulator, incident detect
 - 동일 AI 초안 저장 재시도는 Campaign을 중복 생성하지 않는다.
 - KPI는 정의된 0 나눗셈 정책으로 재현 가능하게 계산된다.
 - SQL은 read-only, table allowlist, AST, timeout, row limit 정책을 통과해야 한다.
+- Analyst Provider는 구조화 `AnalysisPlan`까지만 만들고 결정론적 compiler가 생성한 SQL만 실행한다.
 - anomaly label 데이터셋으로 precision/recall을 재현할 수 있다.
 - 외부 LLM 없이 핵심 테스트와 평가의 deterministic subset을 실행할 수 있다.
 - 문서에는 실제 실행한 검증과 미실행 항목이 구분되어 있다.

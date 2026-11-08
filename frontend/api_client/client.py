@@ -174,6 +174,9 @@ class AdPilotApiClient:
             params=self._analytics_params(dataset_run_id, campaign_id, start_date, end_date),
         )
 
+    def ask_performance_analyst(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return self._request_json("POST", "/analyst/questions", json=dict(payload))
+
     @staticmethod
     def _analytics_params(
         dataset_run_id: str,

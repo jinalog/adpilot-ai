@@ -163,3 +163,65 @@ Phase 3 이미지는 기존 개발 DB와 분리한 `adpilot-phase3` Compose 프�
 - 검증 방식: detector 결과 key와 별도 truth label key 비교
 - 제한: 의도적으로 설계한 합성 회귀 결과이며 실제 광고 운영 정확도나 LLM 품질을 의미하지 않음
 - 실제 LLM 호출: 없음
+
+## Phase 4 — AI Performance Analyst
+
+Phase 4 이미지는 기존 개발 DB와 분리한 `adpilot-phase4` Compose 프로젝트, 전용 `adpilot_phase4_demo` PostgreSQL DB와 고정 seed 합성 dataset에서 실제 Streamlit·FastAPI를 Playwright로 조작해 캡처했습니다. Planner는 결정론적 Mock이며 실제 LLM 정확도 증빙이 아닙니다.
+
+![Performance Analyst input](assets/screenshots/phase-4/01-analyst-input.png)
+
+- 화면: Performance Analyst 입력
+- 구현 기능: dataset·Campaign·기간 범위와 자연어 질문 입력, 대표 질문 선택
+- 검증 내용: Streamlit은 REST API만 호출하고 Mock planner, 실제 LLM 미사용, 사용자 SQL 입력/실행 미지원 정책을 화면에 명시함
+- 데이터: 고정 seed 합성 테스트 데이터
+
+![Normal Analyst result](assets/screenshots/phase-4/02-normal-result.png)
+
+- 화면: ROAS 상위 Campaign 정상 분석 결과
+- 구현 기능: 자연어 질문을 구조화 `AnalysisPlan`으로 제한하고 검증 가능한 facts를 evidence ID와 함께 표시
+- 검증 내용: `RANK_CAMPAIGNS`, dataset/date scope, limit 3을 결정론적 SQL로 컴파일해 PostgreSQL read-only transaction에서 실행함
+- 데이터: 고정 seed 합성 Campaign 6개와 일별 metric 420행
+
+![Hypotheses and recommendations](assets/screenshots/phase-4/03-hypotheses-recommendations.png)
+
+- 화면: Anomaly 분석 결과
+- 구현 기능: facts, 확인이 필요한 hypotheses, 자동 실행되지 않는 recommendations를 분리
+- 검증 내용: anomaly truth label을 조회하지 않고 raw metric과 기존 `rules-v1` detector로 사실 4건을 계산함
+- 데이터: 고정 seed 합성 테스트 데이터
+
+![Expanded evidence](assets/screenshots/phase-4/04-evidence-expanded.png)
+
+- 화면: Evidence와 조회 범위 확장
+- 구현 기능: 실행 plan, dataset/date/campaign scope, query fingerprint, row count, provider mode와 usage 표시
+- 검증 내용: 응답의 각 fact가 evidence ID를 참조하며 raw SQL이나 credential은 노출하지 않음
+- 데이터: 고정 seed 합성 테스트 데이터, Mock planner
+
+![Clarification response](assets/screenshots/phase-4/05-clarification.png)
+
+- 화면: 질문 명확화 요청
+- 구현 기능: 순위 metric이 없는 질문을 `NEEDS_CLARIFICATION`으로 반환
+- 검증 내용: 불완전한 요구를 추측해 SQL로 실행하지 않고 필요한 KPI를 사용자에게 요청함
+- 데이터: 저장되지 않는 합성 질문
+
+![Safety blocked response](assets/screenshots/phase-4/06-safety-blocked.png)
+
+- 화면: 안전 검증 차단
+- 구현 기능: SQL 주입형 자연어 질문의 사전 차단과 안전한 오류 코드 표시
+- 검증 내용: `guard_question` 단계에서 `unsafe_question`으로 종료되어 compiler, validator, executor에 진입하지 않음
+- 데이터: 저장되지 않는 합성 공격 문자열
+
+![Swagger Analyst API](assets/screenshots/phase-4/07-swagger-analyst-api.png)
+
+- 화면: FastAPI Swagger Performance Analyst API
+- 구현 기능: `POST /api/v1/analyst/questions` 요청·응답 schema와 실제 HTTP 200 실행 결과
+- 검증 내용: API가 raw SQL 필드 없이 `AnalysisPlan`, facts, hypotheses, recommendations, evidence와 실행 metadata를 반환함
+- 데이터: 고정 seed 합성 테스트 데이터, Mock planner
+
+### Phase 4 안전성·평가 결과
+
+- Mock Analyst golden dataset: 22/22 passed
+- SQL safety corpus: 40/40 passed
+- PostgreSQL 전용 검증: read-only write 거부·rollback, 실제 statement timeout, limit+1 truncation, AST 차단 포함
+- 하드 제한: 최대 500행, 2.5초 statement timeout, 최대 366일 범위
+- 실제 LLM 호출 및 실제 LLM 품질 평가: 미실행
+- 실제 광고 데이터 연결·설정 변경·자동 권고 실행: 없음

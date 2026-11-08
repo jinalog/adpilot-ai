@@ -23,7 +23,7 @@
 
 - `campaign_setup`: `evaluations/datasets/campaign_setup_golden.json`의 22개 정상, 누락, 모호한 금액·기간, 잘못된 예산·기간, 다중 채널, 한국어 단위, 경계값, prompt injection 입력
 - `sql_safety`: SELECT/CTE 정상과 DML, DDL, comment bypass, multi-statement, forbidden table, excessive result
-- `analyst_questions`: 캠페인, 기간, metric, 비교 방향이 명시된 기대 결과
+- `analyst_questions`: 22개 한국어/영어 요약·Campaign 비교·순위·기간 비교·추세·anomaly·모호성·injection·근거 없는 원인 단정 case
 - `anomalies`: seed와 주입 구간/유형/severity truth label을 함께 저장
 
 합성 데이터 generator seed, schema version, metric definition version을 기록한다. 실제 개인정보와 광고 계정 데이터는 사용하지 않는다.
@@ -41,6 +41,14 @@ API latency와 agent 단계별 latency를 분리하고 warm-up 뒤 동일 환경
 Phase 1은 deterministic domain/API test baseline을 만든다. Phase 2는 Mock provider로 campaign golden set을 먼저 통과시키고 실제 provider 평가는 별도 opt-in으로 실행한다. Phase 3은 anomaly truth label로 metric을 계산한다. Phase 4는 SQL safety와 analyst accuracy를 추가하며, Phase 5에서 결과 보고와 CI threshold를 확정한다.
 
 Phase 2 runner는 기대 상태, 일부 기대 필드, 누락 필드, 오류 유형을 자동 비교한다. Mock 결과는 규칙 기반 extractor의 회귀 안정성만 나타내며 실제 LLM field accuracy로 환산하지 않는다. 실제 LLM 평가는 비용·provider/model/version을 기록하는 별도 opt-in 실행으로만 수행하고 기본 test나 CI에는 포함하지 않는다.
+
+## Phase 4 Analyst와 SQL safety 결과
+
+`evaluations/run_analyst_golden.py`는 고정 seed PostgreSQL dataset에서 expected status, question type, metric·direction·scope, exact fact, clarification, hypothesis 분리와 evidence 연결을 검사한다. 실제 실행 결과는 Mock Analyst 22/22다. 이는 deterministic planner/compiler 회귀 결과이며 실제 LLM 정확도·token·비용 결과가 아니다.
+
+`evaluations/run_sql_safety_evaluation.py`는 정상 SELECT/제한 CTE와 DML/DDL, multi-statement, comment, 대소문자 변형, forbidden/truth/system table, wildcard, SELECT INTO, locking, 위험 function, limit·dataset scope 우회, nested/alias 우회 40건을 AST boundary에서 검사한다. 실제 결과는 40/40 expected allow/block와 일치했다. corpus SQL은 실행하지 않고 parser/validator에만 전달한다.
+
+전용 PostgreSQL integration은 compiled SELECT 성공과 exact fact, 다른 dataset 격리, DB read-only write 거부·rollback, table lock을 이용한 실제 statement timeout, limit+1 기반 `truncated`, truth table 차단을 검증한다. 합성 데이터가 detector와 함께 설계되었고 실제 광고 분포나 LLM을 평가하지 않았다는 제한은 유지한다.
 
 Phase 2.1 신뢰성 회귀에는 구조화 수정의 provider 미호출, provider 실패 시 기존 값과 실제 누락 보존, 전용 PostgreSQL의 동시 save 행 잠금, transaction 실패 rollback을 포함한다. Mock golden dataset 22건은 변경 후에도 별도로 실행한다. 실제 LLM 평가는 Phase 2.1에서도 실행하지 않았으며, Mock 및 실패 주입 결과를 실제 provider 품질로 해석하지 않는다.
 

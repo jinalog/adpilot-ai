@@ -2,7 +2,7 @@
 
 AdPilot AI는 자연어 캠페인 설정, 광고 성과 분석, 이상 탐지를 안전한 승인 흐름과 결합하는 AI 광고 운영 플랫폼입니다. 실제 광고 송출이나 광고 계정 변경이 아닌 합성 데이터 기반 포트폴리오 프로젝트이며, AI Backend/Agent Platform 설계 역량을 검증하는 것이 목적입니다.
 
-현재 상태는 **Phase 3 — Advertising Analytics 완료**입니다. Phase 2.1의 안전한 AI Campaign Setup 위에 고정 seed 합성 광고 성과, 결정론적 KPI, 7일 baseline 규칙 기반 이상 탐지, 분석 REST API와 Streamlit Performance Dashboard를 추가했습니다. anomaly truth는 평가 전용으로 분리했으며 제품 API는 detector 결과만 반환합니다. AI Performance Analyst, 자연어 SQL과 RAG는 아직 구현하지 않았습니다.
+현재 상태는 **Phase 4 — AI Performance Analyst 완료**입니다. Phase 3.1의 합성 성과와 KPI 위에 구조화 `AnalysisPlan`, 결정론적 SQL compiler, PostgreSQL AST safety validator, read-only/timeout/row-limit executor와 사실·가설·추천·근거 분리 응답을 추가했습니다. 기본 Provider는 외부 호출이 없는 Mock이며 실제 LLM, 실제 광고 데이터, 사용자 raw SQL과 자동 Campaign 변경은 사용하지 않습니다.
 
 ## 목표 기능
 
@@ -21,6 +21,7 @@ AdPilot AI는 자연어 캠페인 설정, 광고 성과 분석, 이상 탐지를
 - pytest, Ruff
 - Docker, Docker Compose
 - LangGraph, Mock/OpenAI Responses provider adapter
+- sqlglot PostgreSQL AST parser
 
 ## 아키텍처
 
@@ -152,6 +153,7 @@ DRAFT --approve--> APPROVED --> ACTIVE <--> PAUSED
 |---|---|---|
 | Dashboard | `GET /health`, `GET /campaigns` | Backend 상태와 전체·상태별 캠페인 수 |
 | Performance Dashboard | `GET /analytics/*` | dataset/기간/Campaign 필터, KPI, 추세, 비교, anomaly |
+| Performance Analyst | `POST /analyst/questions` | 자연어 plan, facts/hypotheses/recommendations/evidence |
 | Campaign List | `GET /campaigns` | 상태 필터, 페이지네이션, 상세 이동 |
 | Campaign Create | `POST /campaigns` | 필수값·예산·기간·채널·타게팅 입력 |
 | Campaign Detail / Edit | `GET/PATCH /campaigns/{id}` | 상세 조회와 허용 상태의 설정 수정 |
@@ -159,7 +161,7 @@ DRAFT --approve--> APPROVED --> ACTIVE <--> PAUSED
 
 API 오류는 404, 409, 422, 연결 실패, timeout과 예상하지 못한 응답으로 구분합니다. UI 검증은 입력 편의를 위한 보조 수단이며 Backend 검증이 최종 기준입니다. Dashboard의 상태 집계는 목록 응답의 `total`만 사용하도록 각 요청을 `limit=1`로 제한합니다.
 
-Phase 0–3의 실제 실행 화면과 검증 설명은 [Portfolio Evidence](docs/portfolio-evidence.md)에서 확인할 수 있습니다.
+Phase 0–4의 실제 실행 화면과 검증 설명은 [Portfolio Evidence](docs/portfolio-evidence.md)에서 확인할 수 있습니다.
 
 ## AI Campaign Setup API
 
@@ -216,6 +218,40 @@ KPI는 원시 합계를 먼저 더한 뒤 `CTR=clicks/impressions`, `CVR=convers
 
 Performance Dashboard는 KPI를 세 행으로 나눠 큰 KRW 합계가 잘리지 않게 표시하고, Spend/Revenue는 원화 정수, CPM/CPC/CPA는 소수점 둘째 자리까지 표시합니다. 일별 추세는 Impressions, Clicks/Conversions, Spend/Revenue, CTR/CVR 네 그래프로 분리해 단위와 스케일을 구분합니다. Frontend는 직접 `pandas`를 사용하지 않고 Streamlit의 chart data contract에 list-of-records를 전달합니다.
 
+## AI Performance Analyst
+
+Analyst API는 자연어 질문과 dataset ID, 선택적 Campaign·기간 context만 받습니다. raw SQL 필드는 Pydantic에서 거부합니다. Mock Provider는 SQL이 아니라 구조화 `AnalysisPlan`만 만들며, Backend compiler가 생성한 named-parameter SQL을 sqlglot AST validator가 다시 검사합니다.
+
+```text
+question → AnalysisPlan → deterministic compiler → AST validator
+         → PostgreSQL read-only executor → raw totals/KPI
+         → facts / hypotheses / recommendations / evidence
+```
+
+```bash
+curl -X POST http://localhost:8000/api/v1/analyst/questions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "dataset_run_id":"4f145f26-ecd7-57ad-bfae-284af05dc3e4",
+    "question":"ROAS 상위 3개 Campaign을 보여 주세요.",
+    "start_date":"2026-09-01",
+    "end_date":"2026-11-09"
+  }'
+```
+
+지원 질문은 전체/특정 Campaign KPI 요약, Campaign 비교, KPI 상·하위 순위, 두 기간 비교, 일별 추세와 detector 기반 anomaly 사실 조회입니다. 모호한 순위 metric이나 비교 기간은 추측하지 않고 `NEEDS_CLARIFICATION`을 반환합니다.
+
+모든 SQL은 `daily_ad_metrics`와 `campaigns`의 허용 column/`SUM`만 사용하며 dataset 범위와 named parameter, row limit을 강제합니다. DML/DDL, multi-statement/comment, wildcard, locking, system catalog, draft/run table, `anomaly_truth_labels`, 파일/network/지연 function은 차단합니다. PostgreSQL transaction은 read-only이며 기본 statement timeout은 2.5초, 결과 기본 limit은 100, 절대 최대는 500입니다. 초과는 `truncated=true`로 표시합니다.
+
+수치 `facts`는 raw totals와 Phase 3 KPI 함수에서만 생성되고 `evidence`의 dataset/Campaign/기간/metric/query fingerprint/근거 값에 연결됩니다. 원인은 “확인 필요”인 `hypotheses`, 조치는 자동 적용되지 않는 `recommendations`로 분리됩니다.
+
+```bash
+PYTHONPATH=backend python evaluations/run_analyst_golden.py
+PYTHONPATH=backend python evaluations/run_sql_safety_evaluation.py
+```
+
+Mock Analyst 결과 22/22와 SQL safety corpus 40/40은 결정론적 회귀 결과입니다. 실제 LLM 정확도, token, 비용과 실제 광고 운영 성능을 의미하지 않습니다.
+
 ## 환경 변수
 
 `.env.example`을 `.env`로 복사해 사용합니다. 저장소에 실제 비밀번호나 API key를 커밋하지 않습니다. 예제 계정은 로컬 개발 전용이며 운영 환경에서 사용할 수 없습니다.
@@ -231,6 +267,11 @@ Performance Dashboard는 KPI를 세 행으로 나눠 큰 KRW 합계가 잘리지
 | `AI_PROVIDER_MAX_RETRIES` | transient 오류 재시도(최대 2) | `2` |
 | `AI_REAL_LLM_OPT_IN` | 실제 adapter 호출 명시 동의 | `false` |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | OpenAI adapter 설정 | key 없음 / `gpt-4.1-mini` |
+| `ANALYST_PROVIDER` | Analyst planning provider | `mock` |
+| `ANALYST_PROVIDER_TIMEOUT_SECONDS` | plan provider 제한 시간 | `10` |
+| `ANALYST_PROVIDER_MAX_RETRIES` | plan transient retry(최대 2) | `2` |
+| `ANALYST_STATEMENT_TIMEOUT_MS` | PostgreSQL statement timeout | `2500` |
+| `ANALYST_ABSOLUTE_MAX_ROWS` | SQL 결과 절대 상한 | `500` |
 
 ## 개발 현황
 
@@ -240,7 +281,7 @@ Performance Dashboard는 KPI를 세 행으로 나눠 큰 KRW 합계가 잘리지
 - [x] Phase 2: AI Campaign Setup Agent, 명시적 DRAFT 저장과 별도 승인 흐름
 - [x] Phase 2.1: 구조화 refine provider skip, 실패 초안 보존, PostgreSQL 동시 save 검증
 - [x] Phase 3: 합성 광고 데이터, KPI API, Performance Dashboard, 규칙 기반 이상 탐지
-- [ ] Phase 4: 안전한 AI Performance Analyst
+- [x] Phase 4: 구조화 plan, 안전한 read-only SQL, 근거 기반 Performance Analyst
 - [ ] Phase 5: 평가, 신뢰성, 관측성, 부하 테스트
 - [ ] Phase 6: 고급 Agent (MVP 완료 후 선택)
 
