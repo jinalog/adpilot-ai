@@ -18,7 +18,7 @@
 
 ## Phase 3 — Advertising Analytics
 
-30일 이상 합성 데이터와 anomaly truth label, KPI service/API, dashboard, 규칙 기반 detector를 구현한다. seed 재현성, 0 나눗셈 규칙, known anomaly 탐지 test가 완료 조건이다.
+**완료.** 70일·6 Campaign·420행의 seed 고정 합성 데이터와 별도 anomaly truth label, raw-first KPI service/API, Streamlit Performance Dashboard, 7일 baseline 규칙 detector를 구현했다. seed 재현성, 0 나눗셈 `null`, DB 제약·소유 데이터 교체, dataset/Campaign/기간 필터, known anomaly 4건의 precision/recall/F1 회귀를 단위·API·PostgreSQL 통합 테스트와 실제 Docker 환경에서 검증했다.
 
 ## Phase 4 — AI Performance Analyst
 

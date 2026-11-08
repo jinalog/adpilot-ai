@@ -32,6 +32,9 @@ def test_campaign_migration_upgrade_downgrade_round_trip(monkeypatch: pytest.Mon
         assert "campaigns" in inspector.get_table_names()
         assert "campaign_drafts" in inspector.get_table_names()
         assert "agent_runs" in inspector.get_table_names()
+        assert "synthetic_dataset_runs" in inspector.get_table_names()
+        assert "daily_ad_metrics" in inspector.get_table_names()
+        assert "anomaly_truth_labels" in inspector.get_table_names()
         constraint_names = {
             constraint["name"] for constraint in inspector.get_check_constraints("campaigns")
         }
@@ -41,10 +44,12 @@ def test_campaign_migration_upgrade_downgrade_round_trip(monkeypatch: pytest.Mon
         command.downgrade(config, "base")
         assert "campaigns" not in inspect(engine).get_table_names()
         assert "campaign_drafts" not in inspect(engine).get_table_names()
+        assert "daily_ad_metrics" not in inspect(engine).get_table_names()
 
         command.upgrade(config, "head")
         assert "campaigns" in inspect(engine).get_table_names()
         assert "campaign_drafts" in inspect(engine).get_table_names()
+        assert "daily_ad_metrics" in inspect(engine).get_table_names()
     finally:
         engine.dispose()
         get_settings.cache_clear()

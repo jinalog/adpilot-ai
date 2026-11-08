@@ -6,6 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
 COPY backend ./backend
+COPY scripts ./scripts
+COPY evaluations ./evaluations
 RUN python -m pip install --no-cache-dir .
 
 EXPOSE 8000

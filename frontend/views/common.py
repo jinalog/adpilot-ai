@@ -20,7 +20,7 @@ def show_api_error(error: ApiClientError) -> None:
     elif isinstance(error, ApiConnectionError):
         st.error("Backend에 연결할 수 없습니다. 서버와 API_BASE_URL을 확인하세요.")
     elif isinstance(error, ApiResponseError) and error.status_code == 404:
-        st.error(f"캠페인을 찾을 수 없습니다: {error.message}")
+        st.error(f"요청한 리소스를 찾을 수 없습니다: {error.message}")
     elif isinstance(error, ApiResponseError) and error.status_code == 409:
         st.warning(f"현재 상태에서는 요청을 수행할 수 없습니다: {error.message}")
     elif isinstance(error, ApiResponseError) and error.status_code == 422:

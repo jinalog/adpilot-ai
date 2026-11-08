@@ -1,5 +1,6 @@
 import os
 from collections.abc import Mapping
+from datetime import date
 from typing import Any
 
 import requests
@@ -111,6 +112,85 @@ class AdPilotApiClient:
 
     def save_ai_campaign_draft(self, draft_id: str) -> dict[str, Any]:
         return self._request_json("POST", f"/ai/campaign-drafts/{draft_id}/save")
+
+    def list_analytics_datasets(self) -> dict[str, Any]:
+        payload = self._request_json("GET", "/analytics/datasets")
+        if not isinstance(payload.get("items"), list):
+            raise ApiResponseError("Dataset response has an invalid shape", code="invalid_json")
+        return payload
+
+    def analytics_summary(
+        self,
+        dataset_run_id: str,
+        *,
+        campaign_id: str | None = None,
+        start_date: date | str | None = None,
+        end_date: date | str | None = None,
+    ) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            "/analytics/summary",
+            params=self._analytics_params(dataset_run_id, campaign_id, start_date, end_date),
+        )
+
+    def analytics_timeseries(
+        self,
+        dataset_run_id: str,
+        *,
+        campaign_id: str | None = None,
+        start_date: date | str | None = None,
+        end_date: date | str | None = None,
+    ) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            "/analytics/timeseries",
+            params=self._analytics_params(dataset_run_id, campaign_id, start_date, end_date),
+        )
+
+    def analytics_campaigns(
+        self,
+        dataset_run_id: str,
+        *,
+        start_date: date | str | None = None,
+        end_date: date | str | None = None,
+    ) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            "/analytics/campaigns",
+            params=self._analytics_params(dataset_run_id, None, start_date, end_date),
+        )
+
+    def analytics_anomalies(
+        self,
+        dataset_run_id: str,
+        *,
+        campaign_id: str | None = None,
+        start_date: date | str | None = None,
+        end_date: date | str | None = None,
+    ) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            "/analytics/anomalies",
+            params=self._analytics_params(dataset_run_id, campaign_id, start_date, end_date),
+        )
+
+    @staticmethod
+    def _analytics_params(
+        dataset_run_id: str,
+        campaign_id: str | None,
+        start_date: date | str | None,
+        end_date: date | str | None,
+    ) -> dict[str, str]:
+        params = {"dataset_run_id": dataset_run_id}
+        if campaign_id:
+            params["campaign_id"] = campaign_id
+        if start_date is not None:
+            params["start_date"] = (
+                start_date.isoformat() if isinstance(start_date, date) else start_date
+            )
+        if end_date is not None:
+            params["end_date"] = end_date.isoformat() if isinstance(end_date, date) else end_date
+        return params
 
     def _request_json(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         response = self._request(method, path, **kwargs)

@@ -103,3 +103,17 @@
 Provider 실패 시 저장된 기존 초안을 보존하고 실제 초안 기준으로 누락 필드를 다시 계산한다. 상태는 `PROVIDER_ERROR`로 유지하며 안전한 오류 코드와 실패 단계만 기록한다. 이전 초안이 `READY`였더라도 실패한 보완 요청을 무시해 자동으로 저장 가능 상태로 되돌리지 않는다. 사용자는 성공한 refine을 다시 수행해야 하며, 이는 실패한 사용자 의도를 조용히 폐기하지 않기 위한 안전 정책이다.
 
 검증: 전용 PostgreSQL에서 두 독립 Session이 동일 READY draft를 겹쳐 저장하는 테스트를 수행했다. 첫 transaction의 `FOR UPDATE` 잠금 중 두 번째 요청이 대기한 뒤 두 응답이 같은 Campaign ID를 반환하고 Campaign 행이 하나임을 확인했다. commit 실패 주입 시 Campaign과 draft 연결이 함께 rollback되는 것도 확인했다. Campaign 전체 optimistic concurrency는 여전히 범위 밖이다.
+
+## ADR-018: 합성 성과 dataset 소유권과 결정론적 분석 계약
+
+선택: `synthetic_dataset_runs`의 UUID가 하나의 생성 실행과 소유 범위를 식별한다. 합성 Campaign은 nullable `synthetic_dataset_run_id` FK로 소유 run을 명시하며 기존 개발 Campaign은 `NULL`로 격리한다. 일별 원시는 `dataset run × campaign × date` 한 행으로 저장하고, 동일 조합은 unique constraint로 차단한다. dataset 이름도 unique이며 같은 이름의 재실행은 기본적으로 거부한다. 교체는 기존 run의 정확한 ID와 명시적 `--replace-dataset-id`가 모두 일치할 때만 허용하고 해당 run이 소유한 metric, truth, Campaign과 run만 transaction 안에서 교체한다. 전체 Campaign 또는 DB reset은 제공하지 않는다.
+
+생성 설정에는 고정 seed, 시작일, 일수, Campaign 수와 schema version을 기록한다. 같은 seed와 같은 정규화 설정은 UUID와 원시 metric/truth까지 동일하게 생성하며 현재 날짜를 참조하지 않는다. schema version은 `analytics-v1`로 시작하고 계약 변경 시 명시적으로 올린다.
+
+KPI는 원시 합계를 먼저 합산한 뒤 `Decimal`로 계산한다. CTR=`clicks/impressions`, CVR=`conversions/clicks`, CPM=`spend×1000/impressions`, CPC=`spend/clicks`, CPA=`spend/conversions`, ROAS=`revenue/spend`다. 분모가 0이면 파생값은 0이나 무한대가 아니라 `null`이다. API 경계에서 rate와 ROAS는 소수점 6자리, 금액형 KPI는 2자리까지 `ROUND_HALF_UP`으로 반올림하고 원시 정수는 반올림하지 않는다.
+
+규칙 탐지는 Campaign별 현재일을 제외한 정확히 7개 선행 calendar day를 baseline으로 사용한다. 관측이 7개 미만이거나 필요한 분모/baseline이 0이면 해당 규칙은 판정 보류한다. 포함 경계는 CTR 60% 이하, CVR 50% 이하, spend 180% 이상, impressions 50% 이하다. CTR은 현재 impressions 100 이상, CVR은 현재 clicks 20 이상일 때만 평가한다.
+
+`anomaly_truth_labels`는 생성 시 주입한 정답만 저장하고 detector는 이를 읽지 않는다. truth가 없는 `(run, campaign, date, type)` 조합은 평가에서 negative다. detector 결과는 threshold나 version 변경 시 stale 상태를 피하기 위해 저장하지 않고 원시 metric에서 요청 시 계산한다. 평가 runner만 truth와 detector key를 비교하며 precision/recall/F1의 분모가 0이면 `null`로 반환한다.
+
+Phase 4가 재사용할 read-only 계약은 `synthetic_dataset_runs`, `campaigns`의 합성 소유 FK, `daily_ad_metrics` 원시 정수와 공개 analytics 조회 응답이다. truth label은 평가 전용이며 제품 anomaly API나 향후 Analyst의 사실 데이터로 노출하지 않는다. PostgreSQL 단일 저장소를 유지하고 microservice, Kafka, Redis, DuckDB는 도입하지 않는다.

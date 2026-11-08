@@ -37,7 +37,8 @@ MVP 이후 후보는 creative 생성·심사, OpenRTB simulator, incident detect
 - 실제 광고 계정이나 외부 운영 설정 변경
 - 실사용자 개인정보 또는 실제 광고 성과 데이터
 - 승인 없는 자동 예산/타게팅 변경 및 복구
-- Phase 3 이전의 성과 분석, 자연어 SQL, RAG 및 실제 광고 연동
+- 자연어 SQL, RAG, AI 원인 분석 및 실제 광고 연동
+- 제품 API를 통한 anomaly truth label 노출
 - 초기 MVP의 마이크로서비스, Kafka, Kubernetes
 
 ## MVP 수용 기준

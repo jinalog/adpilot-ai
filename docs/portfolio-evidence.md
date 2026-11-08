@@ -1,4 +1,4 @@
-# Phase 0–2 Portfolio Evidence
+# Phase 0–3 Portfolio Evidence
 
 이 문서는 실제 Docker Compose 환경에서 FastAPI, PostgreSQL, Streamlit을 실행하고 Playwright로 캡처한 포트폴리오 증빙입니다. 캡처 데이터는 `adpilot-portfolio`라는 격리된 Compose 프로젝트의 전용 PostgreSQL 볼륨에 생성한 합성 캠페인 24개입니다. 기존 개발 DB 데이터는 사용하거나 변경하지 않았습니다.
 
@@ -113,3 +113,49 @@ Phase 2 이미지는 `adpilot-phase2` 격리 Compose 프로젝트의 전용 Post
 - 구현 기능: `PROVIDER_ERROR`, 안전한 `provider_schema_mismatch` 오류 코드, 저장 차단
 - 검증 내용: 잘못된 JSON을 Campaign으로 저장하거나 tool/DB 작업으로 연결하지 않음
 - 데이터: 합성 오류 입력, Mock Provider
+
+## Phase 3 — Synthetic Advertising Analytics
+
+Phase 3 이미지는 기존 개발 DB와 분리한 `adpilot-phase3` Compose 프로젝트, 전용 `adpilot_phase3_demo` PostgreSQL DB와 volume에서 Playwright로 캡처했습니다. dataset은 seed `20261107`, schema `analytics-v1`, 70일, Campaign 6개, 일별 metric 420행과 anomaly truth 4건으로 구성됩니다.
+
+![Performance Dashboard](assets/screenshots/phase-3/01-performance-dashboard.png)
+
+- 화면: Performance Dashboard 요약
+- 구현 기능: dataset·기간·Campaign 필터, 원시 합계와 CTR/CVR/CPM/CPC/CPA/ROAS
+- 검증 내용: Streamlit이 FastAPI REST만 호출해 격리 PostgreSQL의 합성 KPI를 렌더링하고 합성 데이터임을 명시함
+- 데이터: 고정 seed 합성 테스트 데이터
+
+![Daily performance trends](assets/screenshots/phase-3/02-daily-trends.png)
+
+- 화면: 일별 성과 추세
+- 구현 기능: impressions/clicks/conversions, spend/revenue, CTR/CVR 시계열
+- 검증 내용: 2026-09-01부터 2026-11-09까지 inclusive 일별 집계와 삽입 anomaly 구간이 실제 API 응답으로 표시됨
+- 데이터: 고정 seed 합성 테스트 데이터
+
+![Campaign comparison](assets/screenshots/phase-3/03-campaign-comparison.png)
+
+- 화면: Campaign별 성과 비교
+- 구현 기능: 6개 Campaign의 raw totals, CTR, CVR, ROAS 비교
+- 검증 내용: 합계를 먼저 집계한 뒤 KPI를 계산하며 Campaign 정렬과 필터 경계를 유지함
+- 데이터: 고정 seed 합성 테스트 데이터
+
+![Rule based anomaly detections](assets/screenshots/phase-3/04-anomaly-detections.png)
+
+- 화면: 규칙 기반 Anomaly 탐지
+- 구현 기능: CTR_DROP, CVR_DROP, SPEND_SPIKE, IMPRESSION_DROP의 observed/baseline/threshold 표시
+- 검증 내용: 제품 API가 truth label을 노출하지 않고 raw metric 기반 `rules-v1` detection 4건만 반환함
+- 데이터: 고정 seed 합성 테스트 데이터; truth는 평가 전용 별도 저장
+
+![Analytics Swagger API](assets/screenshots/phase-3/05-analytics-api.png)
+
+- 화면: FastAPI Swagger Analytics API
+- 구현 기능: datasets, summary, timeseries, campaigns, anomalies의 read-only endpoint
+- 검증 내용: 기존 Campaign·AI Setup 계약을 유지하면서 Phase 3 endpoint와 schema가 OpenAPI에 추가됨
+- 데이터: API 문서 화면, 비밀정보 없음
+
+### Anomaly 평가
+
+- 실제 실행 결과: TP 4, FP 0, FN 0, precision 1.000000, recall 1.000000, F1 1.000000
+- 검증 방식: detector 결과 key와 별도 truth label key 비교
+- 제한: 의도적으로 설계한 합성 회귀 결과이며 실제 광고 운영 정확도나 LLM 품질을 의미하지 않음
+- 실제 LLM 호출: 없음

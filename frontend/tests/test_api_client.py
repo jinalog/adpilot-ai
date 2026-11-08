@@ -19,6 +19,7 @@ from views.ai_campaign_setup import (
     complete_saved_draft,
 )
 from views.common import format_budget, parse_targeting
+from views.performance_dashboard import build_anomaly_rows, format_nullable
 
 
 def response(
@@ -235,3 +236,62 @@ def test_save_lock_blocks_duplicate_click_and_completion_navigates() -> None:
 
     assert state["ai_save_in_progress"] is False
     assert navigation == [("Campaign Detail", "campaign-id")]
+
+
+def test_analytics_client_uses_dataset_campaign_and_date_filters() -> None:
+    session = FakeSession(
+        [
+            response(200, {"items": [{"id": "dataset-id"}]}),
+            response(200, {"totals": {}, "kpis": {}}),
+            response(200, {"items": []}),
+            response(200, {"items": []}),
+            response(200, {"items": []}),
+        ]
+    )
+    client = AdPilotApiClient("http://backend/api/v1", session=session)  # type: ignore[arg-type]
+
+    client.list_analytics_datasets()
+    client.analytics_summary(
+        "dataset-id",
+        campaign_id="campaign-id",
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+    )
+    client.analytics_timeseries("dataset-id")
+    client.analytics_campaigns("dataset-id")
+    client.analytics_anomalies("dataset-id", campaign_id="campaign-id")
+
+    assert [call["url"] for call in session.calls] == [
+        "http://backend/api/v1/analytics/datasets",
+        "http://backend/api/v1/analytics/summary",
+        "http://backend/api/v1/analytics/timeseries",
+        "http://backend/api/v1/analytics/campaigns",
+        "http://backend/api/v1/analytics/anomalies",
+    ]
+    assert session.calls[1]["params"] == {
+        "dataset_run_id": "dataset-id",
+        "campaign_id": "campaign-id",
+        "start_date": "2026-09-01",
+        "end_date": "2026-09-30",
+    }
+
+
+def test_performance_dashboard_helpers_show_null_and_anomaly_contract() -> None:
+    assert format_nullable(None, kind="percent") == "N/A"
+    assert format_nullable(0.1234, kind="percent") == "12.34%"
+    assert format_nullable(1234.5, kind="money") == "₩1,234.50"
+    rows = build_anomaly_rows(
+        [
+            {
+                "campaign_name": "Synthetic 1",
+                "date": "2026-09-22",
+                "anomaly_type": "CTR_DROP",
+                "observed_value": 0.03,
+                "baseline_value": 0.05,
+                "change_ratio": 0.6,
+                "threshold": 0.6,
+            }
+        ]
+    )
+    assert rows[0]["Type"] == "CTR_DROP"
+    assert rows[0]["Change"] == "60.0%"

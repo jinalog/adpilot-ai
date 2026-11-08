@@ -25,8 +25,11 @@
 | DONE | P0 | Campaign Setup Mock golden dataset 22건 | deterministic runner 22/22 |
 | DONE | P0 | Phase 2.1 구조화 refine provider skip 및 실패 초안 보존 | workflow/service/API regression tests |
 | DONE | P0 | PostgreSQL 동시 AI draft save 및 rollback 검증 | 독립 Session 경쟁/실패 주입 integration tests |
+| DONE | P0 | 재현 가능한 합성 성과 generator와 소유권 분리 | seed/schema/row count 및 안전한 conflict·replace tests |
+| DONE | P0 | 결정론적 KPI와 Analytics REST API | 0 분모, 합계 우선, 기간·Campaign 필터 API tests |
+| DONE | P0 | 7일 baseline 규칙 anomaly detector와 truth 분리 | known anomaly 4건 precision/recall/F1 evaluation |
+| DONE | P0 | Streamlit Performance Dashboard | 실제 격리 Docker API 연결 및 Playwright captures |
 | LATER | P1 | Campaign 전반 optimistic concurrency | version/conflict ADR 및 tests |
-| LATER | P1 | 합성 데이터/KPI/anomaly | deterministic tests |
 | LATER | P1 | Safe SQL Analyst | security/evaluation suite |
 | LATER | P2 | observability와 load test | measured report |
 
@@ -51,3 +54,12 @@
 - 구조화 필드 수정만 있는 refine은 provider를 호출하지 않고도 동일한 누락·검증 경로를 통과한다.
 - Provider 실패 시 기존 초안과 실제 누락 필드를 보존하며 상태는 `PROVIDER_ERROR`로 유지한다.
 - 전용 PostgreSQL의 독립 Session 경쟁에서 동일 draft save가 Campaign 하나와 일관된 연결만 남기는 것을 검증했다.
+
+## Phase 3 완료 결과
+
+- 기본 dataset은 `analytics-v1`, seed `20261107`, 70일, Campaign 6개, 일별 metric 420행과 truth 4건이다.
+- 기존 Campaign은 ownership이 `NULL`이며 generator의 명시적 replace가 삭제하지 않는다.
+- KPI는 raw 합계를 먼저 집계하고 0 분모를 `null`로 반환한다.
+- detector는 truth를 읽지 않고 이전 7일 raw metric만으로 CTR/CVR/spend/impression 규칙을 계산한다.
+- 실제 합성 회귀 결과는 TP 4, FP 0, FN 0, precision/recall/F1 1.0이다. 실제 운영 정확도 주장은 아니다.
+- Phase 4의 자연어 SQL, AI 해석, RAG는 구현하지 않았다.

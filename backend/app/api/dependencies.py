@@ -8,8 +8,10 @@ from app.agents.providers import build_provider
 from app.core.config import get_settings
 from app.db.session import get_db_session
 from app.infrastructure.ai_campaign_repository import AICampaignRepository
+from app.infrastructure.analytics_repository import AnalyticsRepository
 from app.infrastructure.campaign_repository import CampaignRepository
 from app.services.ai_campaign_service import AICampaignService
+from app.services.analytics_service import AnalyticsService
 from app.services.campaign_service import CampaignService
 
 DatabaseSession = Annotated[Session, Depends(get_db_session)]
@@ -34,3 +36,10 @@ def get_ai_campaign_service(session: DatabaseSession) -> AICampaignService:
 
 
 AICampaignServiceDependency = Annotated[AICampaignService, Depends(get_ai_campaign_service)]
+
+
+def get_analytics_service(session: DatabaseSession) -> AnalyticsService:
+    return AnalyticsService(AnalyticsRepository(session))
+
+
+AnalyticsServiceDependency = Annotated[AnalyticsService, Depends(get_analytics_service)]

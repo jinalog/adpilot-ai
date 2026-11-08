@@ -43,3 +43,19 @@ Phase 1은 deterministic domain/API test baseline을 만든다. Phase 2는 Mock 
 Phase 2 runner는 기대 상태, 일부 기대 필드, 누락 필드, 오류 유형을 자동 비교한다. Mock 결과는 규칙 기반 extractor의 회귀 안정성만 나타내며 실제 LLM field accuracy로 환산하지 않는다. 실제 LLM 평가는 비용·provider/model/version을 기록하는 별도 opt-in 실행으로만 수행하고 기본 test나 CI에는 포함하지 않는다.
 
 Phase 2.1 신뢰성 회귀에는 구조화 수정의 provider 미호출, provider 실패 시 기존 값과 실제 누락 보존, 전용 PostgreSQL의 동시 save 행 잠금, transaction 실패 rollback을 포함한다. Mock golden dataset 22건은 변경 후에도 별도로 실행한다. 실제 LLM 평가는 Phase 2.1에서도 실행하지 않았으며, Mock 및 실패 주입 결과를 실제 provider 품질로 해석하지 않는다.
+
+## Phase 3 anomaly 회귀 결과
+
+`analytics-v1`/seed `20261107` dataset은 4개 Campaign-date-type truth를 별도 table에 저장한다. `rules-v1` detector는 truth table을 읽지 않고 raw metric과 정확한 이전 7 calendar day만 사용한다. `evaluations/run_anomaly_evaluation.py`가 detection key와 truth key를 비교하며 유형별·전체 TP/FP/FN, precision, recall, F1을 출력한다.
+
+2026-11-08 격리 PostgreSQL에서 실제 실행한 기본 dataset 결과:
+
+| 범위 | TP | FP | FN | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|---:|---:|
+| CTR_DROP | 1 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
+| CVR_DROP | 1 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
+| SPEND_SPIKE | 1 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
+| IMPRESSION_DROP | 1 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
+| 전체 | 4 | 0 | 0 | 1.000000 | 1.000000 | 1.000000 |
+
+데이터와 threshold가 함께 설계된 합성 회귀라 실제 분포 변화, 복합 anomaly, 계절성, 결측·지연 수집 환경의 정확도를 대표하지 않는다. 이 결과는 detector 구현과 truth 분리의 재현성 증빙이며 실제 광고 운영 성능 평가는 미실행이다. 실제 LLM도 호출하지 않았다.

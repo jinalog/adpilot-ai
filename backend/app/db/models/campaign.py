@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    ForeignKey,
     Index,
     String,
     Text,
@@ -46,6 +47,12 @@ class Campaign(Base):
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     channels: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     targeting: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    synthetic_dataset_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("synthetic_dataset_runs.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=CampaignStatus.DRAFT.value
     )

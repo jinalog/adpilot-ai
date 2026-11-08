@@ -49,9 +49,15 @@ Dashboard는 전체와 상태별 목록 API를 `limit=1`로 호출하고 응답�
 
 LangGraph는 입력 텍스트 유무를 판단하는 시작 conditional edge, `extract_requirements`/`skip_provider_extraction`, `merge_context`, `check_missing_fields`, `validate_draft`, preview/clarification/provider-error 노드를 사용한다. `additional_input`이 유효한 텍스트일 때만 provider 추출을 실행하고, 구조화 `draft_updates`만 있는 refine은 provider를 호출하지 않은 채 기존 초안과 병합한 뒤 동일한 누락·결정론적 검증을 거친다. 완료 상태는 `READY`, `NEEDS_CLARIFICATION`, `VALIDATION_FAILED`, `PROVIDER_ERROR`로 분기한다. 동일 draft save는 PostgreSQL 행 잠금과 단일 transaction으로 연결된 Campaign을 재사용한다.
 
-### 성과 분석 (Phase 3–4)
+### 성과 분석 (Phase 3)
 
-질문 → 분석 계획/제한된 SQL 후보 → AST 및 allowlist 검사 → read-only timeout 실행 → 결정론적 KPI → LLM 설명. 응답은 `facts`, `hypotheses`, `recommendations`, `evidence`를 분리한다.
+고정 seed generator → dataset run과 소유 Campaign → 일별 raw metric → FastAPI application service → 결정론적 KPI/규칙 detector → Streamlit REST client 순서다. KPI는 Campaign·기간의 raw 합계를 먼저 집계한 뒤 계산하며 0 분모는 `null`이다. 조회 기간은 inclusive, 최대 366일이고 Campaign 필터는 선택한 dataset 소유 여부를 검사한다.
+
+`rules-v1` detector는 현재일을 제외한 정확한 이전 7 calendar day를 Campaign별 baseline으로 사용한다. `anomaly_truth_labels`는 generator와 평가 runner만 읽으며, 제품의 `/analytics/anomalies`는 raw metric으로 매 요청 계산한 detection만 반환한다. 따라서 정답을 결과로 노출하거나 detector가 정답을 참조하지 않는다.
+
+### AI Performance Analyst (Phase 4, 미구현)
+
+향후 질문 → 분석 계획/제한된 SQL 후보 → AST 및 allowlist 검사 → read-only timeout 실행 → 결정론적 KPI → LLM 설명 흐름을 추가한다. Phase 3의 raw metric과 KPI API를 재사용하며 응답은 `facts`, `hypotheses`, `recommendations`, `evidence`를 분리한다. 현재 자연어 SQL과 LLM 설명은 구현하지 않았다.
 
 ## Agent Workflow 원칙
 
@@ -59,7 +65,9 @@ Workflow state에는 request ID, 단계, 검증 오류, retry 수, tool result r
 
 ## 데이터 모델 방향
 
-Phase 1의 `campaigns`는 UUID, 이름/목표, 원화 정수 예산, 기간, JSON 채널/타게팅, 상태, 승인·비활성화·생성·수정 시각을 저장한다. DB check constraint와 domain validation을 함께 적용해 우회 저장도 방어한다. Phase 2의 `campaign_drafts`는 현재 구조화 값과 판정만, `agent_runs`는 provider/model/retry/latency/usage/error metadata만 저장한다. 자연어와 provider 원문은 저장하지 않는다. Phase 3에는 `daily_ad_metrics`와 anomaly label/result를 추가한다.
+Phase 1의 `campaigns`는 UUID, 이름/목표, 원화 정수 예산, 기간, JSON 채널/타게팅, 상태, 승인·비활성화·생성·수정 시각을 저장한다. DB check constraint와 domain validation을 함께 적용해 우회 저장도 방어한다. Phase 2의 `campaign_drafts`는 현재 구조화 값과 판정만, `agent_runs`는 provider/model/retry/latency/usage/error metadata만 저장한다. 자연어와 provider 원문은 저장하지 않는다.
+
+Phase 3의 `synthetic_dataset_runs`는 seed, schema version, 기간과 generation config를 기록한다. `campaigns.synthetic_dataset_run_id`는 generator 소유권을 명시하며 기존 Campaign은 `NULL`로 유지한다. `daily_ad_metrics`는 dataset×Campaign×date 단위의 impressions/clicks/conversions/spend/revenue 원시값을, `anomaly_truth_labels`는 평가용 주입 유형과 metadata를 저장한다. detection 결과는 저장하지 않는다. 동일 dataset 이름은 기본 거부하며 정확한 ID를 명시한 교체만 해당 run 소유 데이터를 transaction 안에서 삭제·재생성한다.
 
 상태 전이는 `DRAFT --approve--> APPROVED --> ACTIVE <--> PAUSED`이며 모든 비활성 상태에서 `INACTIVE`로 이동할 수 있다. `INACTIVE`는 terminal state다. 승인된 설정을 수정하면 승인을 무효화하고 `DRAFT`로 되돌린다. 실제 삭제 대신 상태와 `deactivated_at`을 남기는 soft delete를 사용한다.
 
