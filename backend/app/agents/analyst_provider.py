@@ -72,8 +72,15 @@ class MockAnalystProvider:
         question_type = self._question_type(normalized)
         metrics = self._metrics(normalized)
         clarification: list[str] = []
-        if question_type is QuestionType.RANK_CAMPAIGNS and not metrics:
-            clarification.append("순위를 계산할 KPI(예: CTR 또는 ROAS)를 지정해 주세요.")
+        if question_type is QuestionType.RANK_CAMPAIGNS:
+            if not metrics:
+                clarification.append("순위를 계산할 KPI(예: CTR 또는 ROAS)를 지정해 주세요.")
+            elif len(metrics) != 1:
+                clarification.append("순위 기준 KPI를 정확히 하나만 지정해 주세요.")
+            if context.campaign_id is not None:
+                clarification.append(
+                    "Campaign 순위는 전체 Campaign context에서만 조회할 수 있습니다."
+                )
         if (
             question_type in {QuestionType.DAILY_TREND, QuestionType.PERIOD_COMPARISON}
             and not metrics
@@ -108,8 +115,16 @@ class MockAnalystProvider:
             start_date=context.start_date,
             end_date=context.end_date,
             grouping=self._grouping(question_type),
-            comparison_start_date=context.comparison_start_date,
-            comparison_end_date=context.comparison_end_date,
+            comparison_start_date=(
+                context.comparison_start_date
+                if question_type is QuestionType.PERIOD_COMPARISON
+                else None
+            ),
+            comparison_end_date=(
+                context.comparison_end_date
+                if question_type is QuestionType.PERIOD_COMPARISON
+                else None
+            ),
             sort_direction=direction,
             limit=limit,
         )

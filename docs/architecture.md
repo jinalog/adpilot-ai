@@ -63,9 +63,13 @@ Performance Dashboard는 FastAPI 응답을 list-of-records chart data로 변환�
 
 Compiler는 질문 유형별 고정 template과 SQLAlchemy named bind parameter만 사용하고 모든 쿼리에 `dataset_run_id`, 기간, 선택 Campaign과 `LIMIT :fetch_limit`을 강제한다. Validator는 compiler와 독립적으로 단일 SELECT/제한 CTE, table·column·function allowlist, multi-statement/comment/wildcard/locking/DDL/DML/system catalog/truth table 차단을 확인한다. 두 경계를 모두 통과한 query만 infrastructure executor에 전달된다.
 
+Phase 4.1에서는 physical `daily_ad_metrics`를 읽는 각 SELECT/CTE scope의 conjunctive predicate가 정확히 `metric_alias.dataset_run_id = :dataset_run_id`인지 구조적으로 검사한다. 반대 방향 equality는 허용하지만 self-comparison, not-equal, OR 무력화와 외부 CTE의 가짜 조건은 거부한다. 최상위 LIMIT expression 자체가 `:fetch_limit`이어야 하며 compiled placeholder/parameter key와 `fetch_limit = row_limit + 1`도 일치해야 한다. column은 table/alias별 allowlist로 판정한다.
+
 Executor는 별도 PostgreSQL connection의 transaction을 `READ ONLY`로 시작하고 `set_config('statement_timeout', ..., true)`를 적용한다. 기본 응답 limit은 100, 절대 최대는 500이며 한 행을 더 조회해 초과 여부를 `truncated`로 표시한다. 실패 transaction은 rollback되고 DB 원문 오류는 `query_timeout` 또는 `query_execution_failed`로 축약된다.
 
 수치 fact는 SQL raw totals와 Phase 3의 `calculate_kpis`에서만 생성하고 evidence ID, dataset, Campaign, 기간, metric, query fingerprint, row count와 근거 값을 연결한다. 변화 원인은 확인이 필요한 hypothesis로, 조치는 자동 적용되지 않는 recommendation으로 분리한다. `anomaly_truth_labels`는 evaluation runner 외의 Analyst 경로에서 접근하지 않는다.
+
+모든 집계는 `COUNT(*) AS source_row_count`를 함께 반환한다. 0행 집계의 NULL 합계를 성과 0으로 변환하지 않고 `NO_DATA`와 빈 facts/evidence로 반환하며, 실제 행의 metric 값이 0인 경우와 구분한다. 기간 비교의 한쪽만 비면 존재하는 facts와 함께 `data_notices`를 반환한다. ranking/anomaly가 500행 경계에서 truncated되면 완전한 모집단·7일 baseline을 보장할 수 없어 facts를 만들지 않고 범위 축소를 요구한다. daily trend 부분 결과는 명시적 truncated 경고와 함께 허용한다.
 
 ## Agent Workflow 원칙
 

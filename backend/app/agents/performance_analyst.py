@@ -16,11 +16,15 @@ from app.domain.analyst_sql import (
     SQLSafetyError,
 )
 from app.infrastructure.analyst_executor import AnalystToolError, QueryResult, ReadOnlySQLExecutor
-from app.schemas.analyst import AnalysisPlan, AnalystStatus
+from app.schemas.analyst import AnalysisPlan, AnalystStatus, QuestionType
 
-UNSAFE_QUESTION = re.compile(
-    r"(?:;|--|/\*|\*/|\b(?:insert|update|delete|drop|alter|create|truncate|copy|call|do|set)\b|"
-    r"\bpg_sleep\b|information_schema|pg_catalog|anomaly_truth_labels)",
+HIGH_CONFIDENCE_SQL_ATTACK = re.compile(
+    r"(?:\b(?:drop\s+table|delete\s+from|insert\s+into|alter\s+table|"
+    r"truncate\s+table|update\s+[a-z_][\w.]*\s+set|select\b[\s\S]+\bfrom\b)\b|"
+    r"\b(?:execute|run)\s+(?:this\s+)?sql\b|"
+    r"\bignore\s+(?:all\s+|previous\s+)?instructions\b[\s\S]*\b(?:execute|sql|query)\b|"
+    r"\b(?:pg_sleep|information_schema|pg_catalog|anomaly_truth_labels)|"
+    r"\b(?:drop|delete|insert|update|select)\b[\s\S]*(?:;|--|/\*|\*/))",
     re.IGNORECASE,
 )
 
@@ -39,6 +43,7 @@ class AnalystState(TypedDict, total=False):
     answer_summary: str
     status: str
     clarification_questions: list[str]
+    data_notices: list[str]
     provider_mode: str
     provider_model: str
     retry_count: int
@@ -78,6 +83,7 @@ class PerformanceAnalystWorkflow:
         graph.add_node("compile_sql", self.compile_sql)
         graph.add_node("validate_sql", self.validate_sql)
         graph.add_node("execute_query", self.execute_query)
+        graph.add_node("result_size_check", self.result_size_check)
         graph.add_node("calculate_facts", self.calculate_facts)
         graph.add_node("compose_response", self.compose_response)
         graph.add_node("provider_error", self.provider_error)
@@ -108,7 +114,12 @@ class PerformanceAnalystWorkflow:
         graph.add_conditional_edges(
             "execute_query",
             lambda state: "error" if state.get("error_code") else "ok",
-            {"error": "tool_error", "ok": "calculate_facts"},
+            {"error": "tool_error", "ok": "result_size_check"},
+        )
+        graph.add_conditional_edges(
+            "result_size_check",
+            lambda state: "narrow" if state.get("error_code") else "continue",
+            {"narrow": END, "continue": "calculate_facts"},
         )
         graph.add_edge("calculate_facts", "compose_response")
         graph.add_edge("compose_response", END)
@@ -136,6 +147,7 @@ class PerformanceAnalystWorkflow:
                 "input_tokens": None,
                 "output_tokens": None,
                 "clarification_questions": [],
+                "data_notices": [],
                 "truncated": False,
             }
         )
@@ -144,7 +156,7 @@ class PerformanceAnalystWorkflow:
 
     @staticmethod
     def guard_question(state: AnalystState) -> AnalystState:
-        if UNSAFE_QUESTION.search(state["question"]):
+        if HIGH_CONFIDENCE_SQL_ATTACK.search(state["question"]):
             return {"error_code": "unsafe_question", "failed_step": "guard_question"}
         return {"error_code": None, "failed_step": None}
 
@@ -155,6 +167,14 @@ class PerformanceAnalystWorkflow:
                 result = self.provider.plan(
                     state["question"], state["context"], timeout_seconds=self.timeout_seconds
                 )
+                if result.plan is not None and not self._plan_matches_context(
+                    result.plan, state["context"]
+                ):
+                    return {
+                        "error_code": "provider_context_mismatch",
+                        "failed_step": "plan_question",
+                        "retry_count": retry_count,
+                    }
                 return {
                     "plan": result.plan,
                     "clarification_questions": result.clarification_questions,
@@ -181,6 +201,17 @@ class PerformanceAnalystWorkflow:
                 retry_count += 1
 
     @staticmethod
+    def _plan_matches_context(plan: AnalysisPlan, context: AnalystPlanContext) -> bool:
+        return (
+            plan.dataset_run_id == context.dataset_run_id
+            and plan.campaign_id == context.campaign_id
+            and plan.start_date == context.start_date
+            and plan.end_date == context.end_date
+            and plan.comparison_start_date == context.comparison_start_date
+            and plan.comparison_end_date == context.comparison_end_date
+        )
+
+    @staticmethod
     def clarification_check(state: AnalystState) -> AnalystState:
         if state.get("clarification_questions"):
             return {"status": AnalystStatus.NEEDS_CLARIFICATION.value}
@@ -203,23 +234,47 @@ class PerformanceAnalystWorkflow:
             return {"error_code": exc.code, "failed_step": "execute_query"}
         return {"query_result": result, "truncated": result.truncated, "error_code": None}
 
+    @staticmethod
+    def result_size_check(state: AnalystState) -> AnalystState:
+        if state.get("truncated") and state["plan"].question_type in {
+            QuestionType.RANK_CAMPAIGNS,
+            QuestionType.ANOMALY_LOOKUP,
+        }:
+            return {
+                "status": AnalystStatus.NEEDS_CLARIFICATION.value,
+                "error_code": "analysis_result_too_large",
+                "failed_step": "result_size_check",
+                "clarification_questions": [
+                    "정확한 분석을 위해 Campaign 또는 날짜 범위를 좁혀 주세요."
+                ],
+                "facts": [],
+                "evidence": [],
+            }
+        return {"error_code": None}
+
     def calculate_facts(self, state: AnalystState) -> AnalystState:
         query = state["compiled_query"]
         result = state["query_result"]
-        facts, evidence, hypotheses, recommendations, summary = self.fact_builder.build(
+        built = self.fact_builder.build(
             state["plan"], result.rows, query_fingerprint=query.fingerprint
         )
         return {
-            "facts": facts,
-            "evidence": evidence,
-            "hypotheses": hypotheses,
-            "recommendations": recommendations,
-            "answer_summary": summary,
+            "facts": built.facts,
+            "evidence": built.evidence,
+            "hypotheses": built.hypotheses,
+            "recommendations": built.recommendations,
+            "answer_summary": built.summary,
+            "data_notices": list(built.data_notices),
+            "status": (AnalystStatus.NO_DATA.value if built.no_data else AnalystStatus.READY.value),
         }
 
     @staticmethod
-    def compose_response(_: AnalystState) -> AnalystState:
-        return {"status": AnalystStatus.READY.value, "error_code": None, "failed_step": None}
+    def compose_response(state: AnalystState) -> AnalystState:
+        return {
+            "status": state.get("status", AnalystStatus.READY.value),
+            "error_code": None,
+            "failed_step": None,
+        }
 
     @staticmethod
     def provider_error(_: AnalystState) -> AnalystState:

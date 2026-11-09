@@ -5,13 +5,14 @@ from urllib.parse import urlparse
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.agents.analyst_provider import MockAnalystProvider
 from app.agents.performance_analyst import PerformanceAnalystWorkflow
 from app.core.config import get_settings
+from app.db.models.analytics import DailyAdMetric
 from app.db.models.campaign import Campaign
 from app.domain.analyst_sql import (
     CompiledQuery,
@@ -180,6 +181,120 @@ def test_postgres_row_limit_is_explicitly_truncated(analyst_engine: Engine) -> N
     assert len(result.rows) == 5
     assert result.truncated is True
     assert [row["date"] for row in result.rows] == sorted(row["date"] for row in result.rows)
+
+
+def test_postgres_exact_row_limit_is_not_truncated(analyst_engine: Engine) -> None:
+    plan = seed(analyst_engine)
+    query = DeterministicSQLCompiler().compile(
+        AnalysisPlan(
+            question_type=QuestionType.DAILY_TREND,
+            dataset_run_id=plan.id,
+            metrics=[AnalysisMetric.CTR],
+            start_date=plan.config.start_date,
+            end_date=plan.end_date,
+            grouping=GroupingUnit.DAY,
+            limit=70,
+        )
+    )
+    result = ReadOnlySQLExecutor(
+        analyst_engine, statement_timeout_ms=2_500, absolute_max_rows=500
+    ).execute(query)
+    assert len(result.rows) == 70
+    assert result.truncated is False
+
+
+def test_postgres_no_data_partial_period_and_zero_metric_contract(
+    analyst_engine: Engine,
+) -> None:
+    plan = seed(analyst_engine)
+    analyst = service(analyst_engine)
+    try:
+        outside = analyst.analyze(
+            AnalystQuestionRequest(
+                dataset_run_id=plan.id,
+                question="CTR 요약",
+                start_date="2025-01-01",
+                end_date="2025-01-31",
+            )
+        )
+        daily = analyst.analyze(
+            AnalystQuestionRequest(
+                dataset_run_id=plan.id,
+                question="일별 CTR 추세",
+                start_date="2025-01-01",
+                end_date="2025-01-31",
+            )
+        )
+        anomaly = analyst.analyze(
+            AnalystQuestionRequest(
+                dataset_run_id=plan.id,
+                question="탐지된 anomaly",
+                start_date="2025-01-01",
+                end_date="2025-01-31",
+            )
+        )
+        partial = analyst.analyze(
+            AnalystQuestionRequest(
+                dataset_run_id=plan.id,
+                question="두 기간 CTR 비교",
+                start_date="2026-09-01",
+                end_date="2026-09-10",
+                comparison_start_date="2025-01-01",
+                comparison_end_date="2025-01-10",
+            )
+        )
+        both_empty = analyst.analyze(
+            AnalystQuestionRequest(
+                dataset_run_id=plan.id,
+                question="두 기간 CTR 비교",
+                start_date="2025-02-01",
+                end_date="2025-02-10",
+                comparison_start_date="2025-01-01",
+                comparison_end_date="2025-01-10",
+            )
+        )
+    finally:
+        analyst._integration_session.close()  # type: ignore[attr-defined]
+
+    assert {outside.status, daily.status, anomaly.status, both_empty.status} == {"NO_DATA"}
+    assert all(not item.facts for item in (outside, daily, anomaly, both_empty))
+    assert partial.status == "READY"
+    assert partial.data_notices == ["comparison 기간에는 원본 metric 행이 없습니다."]
+
+    campaign_id = plan.campaigns[0].id
+    metric_date = plan.metrics[0].date
+    with analyst_engine.begin() as connection:
+        connection.execute(
+            update(DailyAdMetric)
+            .where(
+                DailyAdMetric.dataset_run_id == plan.id,
+                DailyAdMetric.campaign_id == campaign_id,
+                DailyAdMetric.date == metric_date,
+            )
+            .values(
+                impressions=0,
+                clicks=0,
+                conversions=0,
+                spend_krw=0,
+                revenue_krw=0,
+            )
+        )
+    analyst = service(analyst_engine)
+    try:
+        real_zero = analyst.analyze(
+            AnalystQuestionRequest(
+                dataset_run_id=plan.id,
+                campaign_id=campaign_id,
+                question="CTR과 ROAS 요약",
+                start_date=metric_date,
+                end_date=metric_date,
+            )
+        )
+    finally:
+        analyst._integration_session.close()  # type: ignore[attr-defined]
+    assert real_zero.status == "READY"
+    assert {fact.label: fact.value for fact in real_zero.facts} == {"ctr": None, "roas": None}
+    assert real_zero.evidence[0].source_row_count == 1
 
 
 def test_truth_table_and_write_sql_never_pass_ast_boundary(analyst_engine: Engine) -> None:

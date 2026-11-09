@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -52,6 +53,17 @@ def _values(row: dict[str, Any]) -> dict[str, int | float | None]:
     }
 
 
+@dataclass(frozen=True, slots=True)
+class FactBuildResult:
+    facts: list[AnalystFact]
+    evidence: list[AnalystEvidence]
+    hypotheses: list[AnalystHypothesis]
+    recommendations: list[AnalystRecommendation]
+    summary: str
+    no_data: bool = False
+    data_notices: tuple[str, ...] = ()
+
+
 class AnalystFactBuilder:
     def build(
         self,
@@ -59,27 +71,40 @@ class AnalystFactBuilder:
         rows: list[dict[str, Any]],
         *,
         query_fingerprint: str,
-    ) -> tuple[
-        list[AnalystFact],
-        list[AnalystEvidence],
-        list[AnalystHypothesis],
-        list[AnalystRecommendation],
-        str,
-    ]:
+    ) -> FactBuildResult:
+        if not rows or not any(int(row.get("source_row_count", 1) or 0) > 0 for row in rows):
+            return FactBuildResult(
+                facts=[],
+                evidence=[],
+                hypotheses=[],
+                recommendations=[],
+                summary=(
+                    f"합성 dataset의 {plan.start_date}~{plan.end_date} 범위에 "
+                    "원본 metric 행이 없습니다."
+                ),
+                no_data=True,
+            )
         if plan.question_type is QuestionType.ANOMALY_LOOKUP:
             return self._anomalies(plan, rows, query_fingerprint)
         prepared = [(row, _values(row)) for row in rows]
         if plan.question_type is QuestionType.RANK_CAMPAIGNS:
             metric = plan.metrics[0].value
             reverse = plan.sort_direction is SortDirection.DESC
-            prepared.sort(
-                key=lambda item: (
-                    item[1].get(metric) is not None,
-                    item[1].get(metric) if item[1].get(metric) is not None else float("-inf"),
-                ),
-                reverse=reverse,
-            )
-            prepared = prepared[: plan.limit]
+            valid = [item for item in prepared if item[1].get(metric) is not None]
+            nulls = [item for item in prepared if item[1].get(metric) is None]
+
+            def tie_breaker(
+                item: tuple[dict[str, Any], dict[str, int | float | None]],
+            ) -> tuple[str, str]:
+                return (
+                    str(item[0].get("name") or ""),
+                    str(item[0].get("campaign_id") or ""),
+                )
+
+            valid.sort(key=tie_breaker)
+            valid.sort(key=lambda item: item[1][metric], reverse=reverse)
+            nulls.sort(key=tie_breaker)
+            prepared = [*valid, *nulls][: plan.limit]
         facts: list[AnalystFact] = []
         evidence: list[AnalystEvidence] = []
         for index, (row, values) in enumerate(prepared, start=1):
@@ -96,6 +121,7 @@ class AnalystFactBuilder:
                     metrics=plan.metrics,
                     query_fingerprint=query_fingerprint,
                     row_count=1,
+                    source_row_count=int(row.get("source_row_count", 1)),
                     values=values,
                 )
             )
@@ -110,9 +136,23 @@ class AnalystFactBuilder:
                         evidence_ids=[evidence_id],
                     )
                 )
-        hypotheses = self._hypotheses(plan)
-        recommendations = self._recommendations(plan)
-        return facts, evidence, hypotheses, recommendations, self._summary(plan, len(facts))
+        notices = self._period_notices(plan, rows)
+        return FactBuildResult(
+            facts=facts,
+            evidence=evidence,
+            hypotheses=self._hypotheses(plan),
+            recommendations=self._recommendations(plan),
+            summary=self._summary(plan, len(facts)),
+            data_notices=tuple(notices),
+        )
+
+    @staticmethod
+    def _period_notices(plan: AnalysisPlan, rows: list[dict[str, Any]]) -> list[str]:
+        if plan.question_type is not QuestionType.PERIOD_COMPARISON:
+            return []
+        present = {str(row.get("period_label")) for row in rows}
+        missing = [label for label in ("current", "comparison") if label not in present]
+        return [f"{label} 기간에는 원본 metric 행이 없습니다." for label in missing]
 
     @staticmethod
     def _label_prefix(row: dict[str, Any]) -> str:
@@ -180,13 +220,19 @@ class AnalystFactBuilder:
         plan: AnalysisPlan,
         rows: list[dict[str, Any]],
         query_fingerprint: str,
-    ) -> tuple[
-        list[AnalystFact],
-        list[AnalystEvidence],
-        list[AnalystHypothesis],
-        list[AnalystRecommendation],
-        str,
-    ]:
+    ) -> FactBuildResult:
+        if not any(plan.start_date <= row["date"] <= plan.end_date for row in rows):
+            return FactBuildResult(
+                facts=[],
+                evidence=[],
+                hypotheses=[],
+                recommendations=[],
+                summary=(
+                    f"합성 dataset의 {plan.start_date}~{plan.end_date} 범위에 "
+                    "원본 metric 행이 없습니다."
+                ),
+                no_data=True,
+            )
         metrics = [
             MetricValue(
                 dataset_run_id=plan.dataset_run_id,
@@ -227,6 +273,14 @@ class AnalystFactBuilder:
                     metrics=plan.metrics,
                     query_fingerprint=query_fingerprint,
                     row_count=1,
+                    source_row_count=int(
+                        next(
+                            row.get("source_row_count", 1)
+                            for row in rows
+                            if row["campaign_id"] == detection.campaign_id
+                            and row["date"] == detection.date
+                        )
+                    ),
                     values=values,
                 )
             )
@@ -242,12 +296,12 @@ class AnalystFactBuilder:
                     evidence_ids=[evidence_id],
                 )
             )
-        return (
-            facts,
-            evidence,
-            self._hypotheses(plan),
-            self._recommendations(plan),
-            (
+        return FactBuildResult(
+            facts=facts,
+            evidence=evidence,
+            hypotheses=self._hypotheses(plan),
+            recommendations=self._recommendations(plan),
+            summary=(
                 "truth label을 조회하지 않고 raw metric에서 "
                 f"anomaly 사실 {len(facts)}건을 계산했습니다."
             ),

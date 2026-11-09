@@ -84,21 +84,34 @@ def render_performance_analyst(client: AdPilotApiClient) -> None:
 def _render_response(response: dict[str, Any]) -> None:
     status = response["status"]
     if status == "NEEDS_CLARIFICATION":
-        st.warning("질문을 더 구체적으로 작성해 주세요.")
+        if response.get("error_code") == "analysis_result_too_large":
+            st.warning("정확한 분석에 필요한 결과가 안전한 행 제한을 초과했습니다.")
+        else:
+            st.warning("질문을 더 구체적으로 작성해 주세요.")
         for question in response["clarification_questions"]:
             st.write(f"- {question}")
+        return
+    if status == "NO_DATA":
+        st.info(response.get("answer_summary") or "조회 범위에 원본 metric 행이 없습니다.")
+        st.caption("성과 0이 아니라 분석할 원본 데이터가 없는 상태입니다.")
         return
     if status != "READY":
         error_code = response.get("error_code") or "unknown_error"
         failed_step = response.get("failed_step") or "unknown_step"
         if error_code == "query_timeout":
             st.error(f"조회 timeout · 단계: {failed_step}")
+        elif status == "VALIDATION_FAILED" and failed_step == "guard_question":
+            st.error(f"명확한 SQL 실행 지시 차단 · {error_code} · 단계: {failed_step}")
         elif status == "VALIDATION_FAILED":
-            st.error(f"SQL safety/입력 검증 차단 · {error_code} · 단계: {failed_step}")
+            st.error(f"SQL safety 검증 차단 · {error_code} · 단계: {failed_step}")
+        elif status == "PROVIDER_ERROR":
+            st.error(f"Provider 처리 실패 · {error_code} · 단계: {failed_step}")
         else:
             st.error(f"분석 실패 · {error_code} · 단계: {failed_step}")
         return
     st.success(response["answer_summary"])
+    for notice in response.get("data_notices", []):
+        st.warning(notice)
     st.subheader("검증 가능한 Facts")
     facts = response["facts"]
     if facts:
@@ -140,4 +153,4 @@ def _render_response(response: dict[str, Any]) -> None:
             }
         )
     if response["truncated"]:
-        st.warning("row limit 때문에 결과가 잘렸습니다. 전체 결과로 해석하지 마세요.")
+        st.warning("일부 결과만 표시합니다. row limit 이후 데이터는 포함되지 않았습니다.")

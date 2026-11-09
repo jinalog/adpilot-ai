@@ -22,7 +22,7 @@
 
 ## Phase 4 — AI Performance Analyst
 
-**완료.** 결정론적 Mock Provider가 자연어를 구조화 `AnalysisPlan`으로 변환하고 Backend compiler가 named-parameter SQL을 생성한다. sqlglot PostgreSQL AST allowlist, dataset scope, read-only transaction, 2.5초 timeout, 기본 100·절대 500 row limit을 거쳐 raw totals 기반 KPI와 facts/hypotheses/recommendations/evidence를 분리해 반환한다. malicious/invalid SQL 40건, 대표 질문 22건, 실제 PostgreSQL timeout·rollback·dataset 격리와 Streamlit REST 화면을 검증했다. 실제 LLM과 실제 광고 데이터는 사용하지 않았다.
+**완료.** 결정론적 Mock Provider가 자연어를 구조화 `AnalysisPlan`으로 변환하고 Backend compiler가 named-parameter SQL을 생성한다. Phase 4.1에서 AST dataset equality/LIMIT/alias/parameter 관계를 강화하고 no-data, 정상 광고 용어, plan 의미 모순, null ranking과 truncated fail-closed를 추가했다. malicious/invalid SQL 51건, 대표 질문 30건, 실제 PostgreSQL timeout·rollback·dataset 격리와 Streamlit REST 화면을 검증했다. 실제 LLM과 실제 광고 데이터는 사용하지 않았다.
 
 ## Phase 5 — Evaluation & Reliability
 

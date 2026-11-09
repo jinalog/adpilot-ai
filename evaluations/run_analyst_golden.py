@@ -19,7 +19,9 @@ from app.services.analyst_service import PerformanceAnalystService
 DATASET = Path(__file__).with_name("datasets") / "analyst_questions_golden.json"
 
 
-def build_service(session: Session) -> PerformanceAnalystService:
+def build_service(
+    session: Session, *, absolute_max_rows: int | None = None
+) -> PerformanceAnalystService:
     settings = get_settings()
     workflow = PerformanceAnalystWorkflow(
         MockAnalystProvider(),
@@ -28,7 +30,7 @@ def build_service(session: Session) -> PerformanceAnalystService:
         ReadOnlySQLExecutor(
             session.get_bind(),
             statement_timeout_ms=settings.analyst_statement_timeout_ms,
-            absolute_max_rows=settings.analyst_absolute_max_rows,
+            absolute_max_rows=absolute_max_rows or settings.analyst_absolute_max_rows,
         ),
         timeout_seconds=settings.analyst_provider_timeout_seconds,
         max_retries=0,
@@ -52,9 +54,9 @@ def main() -> int:
         foreign_campaign = session.scalar(
             select(Campaign.id).where(Campaign.synthetic_dataset_run_id != dataset.id).limit(1)
         )
-        service = build_service(session)
         passed = 0
         for case in cases:
+            service = build_service(session, absolute_max_rows=case.get("absolute_max_rows"))
             campaign_id = None
             if case.get("campaign_name"):
                 campaign_id = campaign_by_name[case["campaign_name"]]

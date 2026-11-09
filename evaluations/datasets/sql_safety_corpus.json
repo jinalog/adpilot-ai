@@ -38,5 +38,16 @@
   {"id":"literal-limit","allowed":false,"sql":"SELECT campaign_id FROM daily_ad_metrics WHERE dataset_run_id=:dataset_run_id LIMIT 999999"},
   {"id":"forbidden-column","allowed":false,"sql":"SELECT targeting FROM campaigns JOIN daily_ad_metrics ON campaigns.id=daily_ad_metrics.campaign_id WHERE daily_ad_metrics.dataset_run_id=:dataset_run_id LIMIT :fetch_limit"},
   {"id":"nested-forbidden-table","allowed":false,"sql":"SELECT campaign_id FROM daily_ad_metrics WHERE dataset_run_id=:dataset_run_id AND campaign_id IN (SELECT campaign_id FROM anomaly_truth_labels) LIMIT :fetch_limit"},
-  {"id":"alias-column-bypass","allowed":false,"sql":"SELECT m.secret_column AS clicks FROM daily_ad_metrics m WHERE m.dataset_run_id=:dataset_run_id LIMIT :fetch_limit"}
+  {"id":"alias-column-bypass","allowed":false,"sql":"SELECT m.secret_column AS clicks FROM daily_ad_metrics m WHERE m.dataset_run_id=:dataset_run_id LIMIT :fetch_limit"},
+  {"id":"valid-reverse-dataset-equality","allowed":true,"sql":"SELECT m.campaign_id FROM daily_ad_metrics AS m WHERE :dataset_run_id=m.dataset_run_id LIMIT :fetch_limit"},
+  {"id":"dataset-self-comparison","allowed":false,"sql":"SELECT campaign_id FROM daily_ad_metrics WHERE dataset_run_id=dataset_run_id AND :dataset_run_id IS NOT NULL LIMIT :fetch_limit"},
+  {"id":"dataset-not-equal","allowed":false,"sql":"SELECT campaign_id FROM daily_ad_metrics WHERE dataset_run_id<>:dataset_run_id LIMIT :fetch_limit"},
+  {"id":"dataset-placeholder-unrelated","allowed":false,"sql":"SELECT campaign_id FROM daily_ad_metrics WHERE dataset_run_id=dataset_run_id AND :dataset_run_id IS NOT NULL LIMIT :fetch_limit"},
+  {"id":"dataset-or-true","allowed":false,"sql":"SELECT campaign_id FROM daily_ad_metrics WHERE dataset_run_id=:dataset_run_id OR TRUE LIMIT :fetch_limit"},
+  {"id":"literal-limit-placeholder-elsewhere","allowed":false,"sql":"SELECT campaign_id FROM daily_ad_metrics WHERE dataset_run_id=:dataset_run_id AND :fetch_limit>0 LIMIT 999999"},
+  {"id":"cte-outer-fake-scope","allowed":false,"sql":"WITH scoped AS (SELECT m.campaign_id,m.dataset_run_id FROM daily_ad_metrics AS m) SELECT scoped.campaign_id FROM scoped WHERE scoped.dataset_run_id=:dataset_run_id LIMIT :fetch_limit"},
+  {"id":"wrong-dataset-alias","allowed":false,"sql":"SELECT m.campaign_id FROM daily_ad_metrics AS m WHERE x.dataset_run_id=:dataset_run_id LIMIT :fetch_limit"},
+  {"id":"campaign-table-column-confusion","allowed":false,"sql":"SELECT c.name FROM daily_ad_metrics AS m JOIN campaigns AS c ON c.id=m.campaign_id WHERE m.dataset_run_id=:dataset_run_id AND c.dataset_run_id=:dataset_run_id LIMIT :fetch_limit"},
+  {"id":"literal-dataset-uuid","allowed":false,"sql":"SELECT campaign_id FROM daily_ad_metrics WHERE dataset_run_id='10000000-0000-0000-0000-000000000001' LIMIT :fetch_limit"},
+  {"id":"valid-scoped-cte-reverse","allowed":true,"sql":"WITH scoped AS (SELECT m.campaign_id FROM daily_ad_metrics AS m WHERE :dataset_run_id=m.dataset_run_id) SELECT scoped.campaign_id FROM scoped LIMIT :fetch_limit"}
 ]

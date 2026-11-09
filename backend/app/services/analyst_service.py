@@ -66,6 +66,7 @@ class PerformanceAnalystService:
             recommendations=state.get("recommendations", []),
             evidence=state.get("evidence", []),
             clarification_questions=state.get("clarification_questions", []),
+            data_notices=state.get("data_notices", []),
             error_code=state.get("error_code"),
             failed_step=state.get("failed_step"),
             retry_count=state.get("retry_count", 0),

@@ -31,6 +31,7 @@
 | DONE | P0 | Streamlit Performance Dashboard | 실제 격리 Docker API 연결 및 Playwright captures |
 | LATER | P1 | Campaign 전반 optimistic concurrency | version/conflict ADR 및 tests |
 | DONE | P0 | Safe SQL Performance Analyst | plan/compiler/AST/read-only 및 golden/safety suite |
+| DONE | P0 | Phase 4.1 Analyst safety와 edge-case hardening | AST 관계 검증, no-data/null/truncated/guard 회귀 |
 | LATER | P2 | observability와 load test | measured report |
 
 ## Phase 1 세부 수용 기준
@@ -70,5 +71,8 @@
 - 결정론적 compiler와 sqlglot AST validator를 분리해 named parameter, dataset scope, allowlist와 강제 limit을 검증한다.
 - PostgreSQL read-only transaction, statement timeout, rollback, 기본 100·절대 500행과 명시적 `truncated`를 적용한다.
 - Phase 3 raw totals/KPI를 재사용해 facts와 evidence를 연결하고 hypotheses/recommendations를 물리적으로 분리한다.
-- Mock Analyst golden 22/22, SQL safety corpus 40/40이며 실제 LLM 정확도·token·비용 평가는 미실행이다.
+- Phase 4.1에서 dataset equality/LIMIT AST 관계와 compiled parameter 계약을 fail-closed로 강화했다.
+- `NO_DATA`, period 부분 데이터 notice, null-last ranking과 ranking/anomaly truncated 범위 축소 계약을 적용했다.
+- 정상 광고 문맥의 drop/set/update/create는 허용하고 명확한 SQL 실행 지시만 guard에서 차단한다.
+- Mock Analyst golden 30/30, SQL safety corpus 51/51이며 실제 LLM 정확도·token·비용 평가는 미실행이다.
 - Streamlit은 Analyst REST API만 호출하고 raw SQL 입력이나 Campaign 자동 변경 기능을 제공하지 않는다.

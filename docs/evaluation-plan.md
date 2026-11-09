@@ -22,8 +22,8 @@
 ## 데이터셋 설계
 
 - `campaign_setup`: `evaluations/datasets/campaign_setup_golden.json`의 22개 정상, 누락, 모호한 금액·기간, 잘못된 예산·기간, 다중 채널, 한국어 단위, 경계값, prompt injection 입력
-- `sql_safety`: SELECT/CTE 정상과 DML, DDL, comment bypass, multi-statement, forbidden table, excessive result
-- `analyst_questions`: 22개 한국어/영어 요약·Campaign 비교·순위·기간 비교·추세·anomaly·모호성·injection·근거 없는 원인 단정 case
+- `sql_safety`: SELECT/CTE 정상과 DML, DDL, comment bypass, multi-statement, forbidden table, dataset equality/alias/CTE/LIMIT 우회
+- `analyst_questions`: 30개 한국어/영어 요약·Campaign 비교·순위·기간 비교·추세·anomaly·no-data·truncation·정상 광고 용어·injection case
 - `anomalies`: seed와 주입 구간/유형/severity truth label을 함께 저장
 
 합성 데이터 generator seed, schema version, metric definition version을 기록한다. 실제 개인정보와 광고 계정 데이터는 사용하지 않는다.
@@ -44,9 +44,9 @@ Phase 2 runner는 기대 상태, 일부 기대 필드, 누락 필드, 오류 유
 
 ## Phase 4 Analyst와 SQL safety 결과
 
-`evaluations/run_analyst_golden.py`는 고정 seed PostgreSQL dataset에서 expected status, question type, metric·direction·scope, exact fact, clarification, hypothesis 분리와 evidence 연결을 검사한다. 실제 실행 결과는 Mock Analyst 22/22다. 이는 deterministic planner/compiler 회귀 결과이며 실제 LLM 정확도·token·비용 결과가 아니다.
+`evaluations/run_analyst_golden.py`는 고정 seed PostgreSQL dataset에서 expected status, question type, metric·direction·scope, exact fact, clarification, no-data/truncation, hypothesis 분리와 evidence 연결을 검사한다. Phase 4.1 실제 실행 결과는 Mock Analyst 30/30이다. 이는 deterministic planner/compiler 회귀 결과이며 실제 LLM 정확도·token·비용 결과가 아니다.
 
-`evaluations/run_sql_safety_evaluation.py`는 정상 SELECT/제한 CTE와 DML/DDL, multi-statement, comment, 대소문자 변형, forbidden/truth/system table, wildcard, SELECT INTO, locking, 위험 function, limit·dataset scope 우회, nested/alias 우회 40건을 AST boundary에서 검사한다. 실제 결과는 40/40 expected allow/block와 일치했다. corpus SQL은 실행하지 않고 parser/validator에만 전달한다.
+`evaluations/run_sql_safety_evaluation.py`는 정상 SELECT/제한 CTE와 DML/DDL, multi-statement, comment, forbidden/truth/system table, wildcard, locking, 위험 function뿐 아니라 dataset self/not-equal/OR, placeholder 오배치, literal LIMIT, CTE 외부 가짜 scope와 table alias 혼동을 검사한다. Phase 4.1 실제 결과는 51/51 expected allow/block와 일치했다. missing/extra compiled parameter와 fetch-limit 관계는 unit test에서 별도로 검증한다. corpus SQL은 실행하지 않고 parser/validator에만 전달한다.
 
 전용 PostgreSQL integration은 compiled SELECT 성공과 exact fact, 다른 dataset 격리, DB read-only write 거부·rollback, table lock을 이용한 실제 statement timeout, limit+1 기반 `truncated`, truth table 차단을 검증한다. 합성 데이터가 detector와 함께 설계되었고 실제 광고 분포나 LLM을 평가하지 않았다는 제한은 유지한다.
 

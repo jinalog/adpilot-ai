@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 class AnalystStatus(StrEnum):
     READY = "READY"
+    NO_DATA = "NO_DATA"
     NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
     VALIDATION_FAILED = "VALIDATION_FAILED"
     PROVIDER_ERROR = "PROVIDER_ERROR"
@@ -65,7 +66,7 @@ class AnalysisPlan(BaseModel):
     limit: int = Field(default=100, ge=1, le=500)
 
     @model_validator(mode="after")
-    def validate_ranges(self) -> "AnalysisPlan":
+    def validate_semantics(self) -> "AnalysisPlan":
         if self.start_date > self.end_date:
             raise ValueError("start_date cannot be later than end_date")
         if (self.end_date - self.start_date).days + 1 > 366:
@@ -82,8 +83,37 @@ class AnalysisPlan(BaseModel):
                 raise ValueError("comparison date range cannot exceed 366 days")
         elif any(value is not None for value in comparison_values):
             raise ValueError("comparison dates are only allowed for period comparison")
-        if self.question_type is QuestionType.RANK_CAMPAIGNS and self.sort_direction is None:
-            raise ValueError("campaign ranking requires sort_direction")
+        expected_grouping = {
+            QuestionType.KPI_SUMMARY: GroupingUnit.OVERALL,
+            QuestionType.CAMPAIGN_COMPARISON: GroupingUnit.CAMPAIGN,
+            QuestionType.RANK_CAMPAIGNS: GroupingUnit.CAMPAIGN,
+            QuestionType.PERIOD_COMPARISON: GroupingUnit.PERIOD,
+            QuestionType.DAILY_TREND: GroupingUnit.DAY,
+            QuestionType.ANOMALY_LOOKUP: GroupingUnit.DAY,
+        }[self.question_type]
+        if self.grouping is not expected_grouping:
+            raise ValueError(
+                f"{self.question_type.value} requires {expected_grouping.value} grouping"
+            )
+        if len(set(self.metrics)) != len(self.metrics):
+            raise ValueError("duplicate metrics are not allowed")
+        if self.question_type is QuestionType.RANK_CAMPAIGNS:
+            if self.sort_direction is None:
+                raise ValueError("campaign ranking requires sort_direction")
+            if len(self.metrics) != 1:
+                raise ValueError("campaign ranking requires exactly one metric")
+            if self.campaign_id is not None:
+                raise ValueError("campaign ranking cannot use a single campaign context")
+        elif self.sort_direction is not None:
+            raise ValueError("sort_direction is only allowed for campaign ranking")
+        if self.question_type is QuestionType.PERIOD_COMPARISON:
+            assert self.comparison_start_date is not None
+            assert self.comparison_end_date is not None
+            if not (
+                self.comparison_end_date < self.start_date
+                or self.comparison_start_date > self.end_date
+            ):
+                raise ValueError("comparison and analysis date ranges cannot overlap")
         return self
 
 
@@ -134,6 +164,7 @@ class AnalystEvidence(BaseModel):
     metrics: list[AnalysisMetric]
     query_fingerprint: str
     row_count: int
+    source_row_count: int = Field(ge=1)
     values: dict[str, Any]
 
 
@@ -154,6 +185,7 @@ class AnalystResponse(BaseModel):
     recommendations: list[AnalystRecommendation] = Field(default_factory=list)
     evidence: list[AnalystEvidence] = Field(default_factory=list)
     clarification_questions: list[str] = Field(default_factory=list)
+    data_notices: list[str] = Field(default_factory=list)
     error_code: str | None = None
     failed_step: str | None = None
     retry_count: int = 0

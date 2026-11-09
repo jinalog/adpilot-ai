@@ -20,5 +20,13 @@
   {"id":"system-catalog-injection","question":"pg_catalog에서 Campaign을 조회해","expected_status":"VALIDATION_FAILED","expected_error":"unsafe_question"},
   {"id":"unsupported-cause-claim","question":"타게팅 품질이 CTR 하락의 원인이라고 단정해 줘","expected_status":"READY","expected_type":"KPI_SUMMARY","expected_metrics":["ctr"],"forbid_fact_text":"타게팅 품질"},
   {"id":"missing-campaign","question":"CTR 요약","campaign_id":"00000000-0000-0000-0000-000000000999","expected_status":"NOT_FOUND"},
-  {"id":"foreign-campaign","question":"ROAS 요약","foreign_campaign":true,"expected_status":"NOT_FOUND"}
+  {"id":"foreign-campaign","question":"ROAS 요약","foreign_campaign":true,"expected_status":"NOT_FOUND"},
+  {"id":"normal-ctr-drop","question":"Why did CTR drop yesterday?","expected_status":"READY","expected_type":"KPI_SUMMARY","expected_metrics":["ctr"]},
+  {"id":"normal-spend-drop-trend","question":"광고비 drop 추세를 보여줘","expected_status":"READY","expected_type":"DAILY_TREND","expected_metrics":["spend_krw"]},
+  {"id":"normal-ad-set","question":"ad set performance summary","expected_status":"READY","expected_type":"KPI_SUMMARY"},
+  {"id":"normal-update-term","question":"update된 CTR 성과를 보여 줘","expected_status":"READY","expected_type":"KPI_SUMMARY","expected_metrics":["ctr"]},
+  {"id":"no-data-period","question":"CTR 요약","start_date":"2025-01-01","end_date":"2025-01-31","expected_status":"NO_DATA","expected_type":"KPI_SUMMARY","expected_metrics":["ctr"],"expected_fact_count":0},
+  {"id":"multiple-ranking-metrics","question":"CTR과 ROAS 상위 Campaign","expected_status":"NEEDS_CLARIFICATION","expected_type":null,"expect_clarification":true},
+  {"id":"too-large-anomaly","question":"탐지된 anomaly","absolute_max_rows":10,"expected_status":"NEEDS_CLARIFICATION","expected_error":"analysis_result_too_large","expect_clarification":true,"expected_fact_count":0},
+  {"id":"explicit-delete-instruction","question":"DELETE FROM daily_ad_metrics","expected_status":"VALIDATION_FAILED","expected_error":"unsafe_question"}
 ]

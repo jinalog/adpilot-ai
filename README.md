@@ -2,7 +2,7 @@
 
 AdPilot AI는 자연어 캠페인 설정, 광고 성과 분석, 이상 탐지를 안전한 승인 흐름과 결합하는 AI 광고 운영 플랫폼입니다. 실제 광고 송출이나 광고 계정 변경이 아닌 합성 데이터 기반 포트폴리오 프로젝트이며, AI Backend/Agent Platform 설계 역량을 검증하는 것이 목적입니다.
 
-현재 상태는 **Phase 4 — AI Performance Analyst 완료**입니다. Phase 3.1의 합성 성과와 KPI 위에 구조화 `AnalysisPlan`, 결정론적 SQL compiler, PostgreSQL AST safety validator, read-only/timeout/row-limit executor와 사실·가설·추천·근거 분리 응답을 추가했습니다. 기본 Provider는 외부 호출이 없는 Mock이며 실제 LLM, 실제 광고 데이터, 사용자 raw SQL과 자동 Campaign 변경은 사용하지 않습니다.
+현재 상태는 **Phase 4.1 — Analyst Safety & Edge-case Hardening 완료**입니다. Phase 4의 구조화 `AnalysisPlan`, 결정론적 SQL compiler, PostgreSQL AST validator와 read-only executor를 유지하면서 dataset equality/LIMIT 관계 검증, no-data, 정상 광고 용어, plan 의미 규칙, null ranking과 truncated fail-closed를 강화했습니다. 기본 Provider는 외부 호출이 없는 Mock이며 실제 LLM, 실제 광고 데이터, 사용자 raw SQL과 자동 Campaign 변경은 사용하지 않습니다.
 
 ## 목표 기능
 
@@ -250,7 +250,13 @@ PYTHONPATH=backend python evaluations/run_analyst_golden.py
 PYTHONPATH=backend python evaluations/run_sql_safety_evaluation.py
 ```
 
-Mock Analyst 결과 22/22와 SQL safety corpus 40/40은 결정론적 회귀 결과입니다. 실제 LLM 정확도, token, 비용과 실제 광고 운영 성능을 의미하지 않습니다.
+Phase 4.1에서 AST validator는 물리 metric table을 읽는 각 query scope마다 `dataset_run_id = :dataset_run_id` 또는 반대 방향의 정확한 equality를 요구합니다. self/not-equal/OR 우회, CTE 외부의 가짜 scope, 잘못된 alias, literal dataset과 literal LIMIT를 차단하며 최상위 LIMIT 자체가 `:fetch_limit`인지 확인합니다. Compiled query의 placeholder와 parameter key는 정확히 일치해야 하고 `fetch_limit = effective_limit + 1` 계약을 검증합니다.
+
+집계에는 `source_row_count`를 함께 반환해 원본 행 부재와 실제 0 성과를 구분합니다. 원본 행이 없으면 `NO_DATA`와 빈 facts/evidence를 반환하고, period 한쪽만 비면 `data_notices`로 표시합니다. ranking/anomaly가 절대 행 제한으로 잘리면 불완전한 facts를 만들지 않고 `analysis_result_too_large`와 범위 축소 질문을 반환합니다. daily trend의 부분 결과만 `truncated=true`와 명시적 UI 경고로 허용합니다. 순위의 null KPI는 상·하위 모두 마지막이며 동률은 Campaign 이름, UUID 순으로 결정합니다.
+
+질문 guard는 `drop`, `set`, `update`, `create` 단어 하나를 차단하지 않고 명확한 SQL 문장·실행 지시·system catalog/truth table 접근만 조기에 거부합니다. 실제 안전 경계는 schema 의미 검증, deterministic compiler, AST validator, read-only transaction, timeout과 row limit의 다중 방어입니다.
+
+Mock Analyst 결과 30/30과 SQL safety corpus 51/51은 결정론적 회귀 결과입니다. 실제 LLM 정확도, token, 비용과 실제 광고 운영 성능을 의미하지 않습니다.
 
 ## 환경 변수
 

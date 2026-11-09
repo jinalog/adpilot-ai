@@ -78,6 +78,60 @@ def test_analyst_api_clarifies_and_blocks_prompt_injection(
     assert blocked.json()["error_code"] == "unsafe_question"
 
 
+def test_analyst_api_allows_normal_drop_set_update_and_create_terms(
+    client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    dataset_id, _, _ = seed_dataset(db_session_factory)
+    for question in (
+        "Why did CTR drop yesterday?",
+        "광고비 drop 추세를 보여줘",
+        "ad set performance summary",
+        "update된 성과를 보여 줘",
+        "Campaign create 이후 성과 요약",
+    ):
+        response = client.post(
+            "/api/v1/analyst/questions",
+            json={"dataset_run_id": dataset_id, "question": question},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] != "VALIDATION_FAILED"
+
+
+def test_analyst_api_returns_no_data_and_partial_period_notice(
+    client: TestClient, db_session_factory: sessionmaker[Session]
+) -> None:
+    dataset_id, _, _ = seed_dataset(db_session_factory)
+    no_data = client.post(
+        "/api/v1/analyst/questions",
+        json={
+            "dataset_run_id": dataset_id,
+            "question": "CTR을 요약해 주세요.",
+            "start_date": "2025-01-01",
+            "end_date": "2025-01-31",
+        },
+    )
+    partial_period = client.post(
+        "/api/v1/analyst/questions",
+        json={
+            "dataset_run_id": dataset_id,
+            "question": "두 기간 CTR 비교",
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-10",
+            "comparison_start_date": "2025-01-01",
+            "comparison_end_date": "2025-01-10",
+        },
+    )
+    assert no_data.status_code == 200
+    assert no_data.json()["status"] == "NO_DATA"
+    assert no_data.json()["facts"] == []
+    assert no_data.json()["evidence"] == []
+    assert partial_period.status_code == 200
+    assert partial_period.json()["status"] == "READY"
+    assert partial_period.json()["data_notices"] == [
+        "comparison 기간에는 원본 metric 행이 없습니다."
+    ]
+
+
 def test_analyst_api_validates_dataset_campaign_and_dates(
     client: TestClient, db_session_factory: sessionmaker[Session]
 ) -> None:

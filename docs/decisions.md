@@ -135,3 +135,11 @@ AST parser는 `sqlglot`을 직접 dependency로 추가한다. 정규식만으로
 Executor는 PostgreSQL transaction을 read-only로 설정하고 statement timeout 기본 2.5초, 결과 기본 100행, 절대 최대 500행을 적용한다. 초과 결과는 `truncated=true`로 표시하며 실패는 rollback한다. AST allowlist는 `daily_ad_metrics`, `campaigns`, 필요한 raw column과 `SUM`만 허용하고 `anomaly_truth_labels`, Campaign draft/run table, system catalog, 파일·network·지연 함수와 write/locking 문장을 차단한다.
 
 수치 fact는 raw totals를 먼저 합산한 뒤 Phase 3 KPI 함수를 재사용한다. 불확실한 원인은 `requires_confirmation=true` hypothesis, 조치는 `auto_applied=false` recommendation으로 분리한다. Analyst는 Campaign 상태·예산·타게팅 변경 API와 연결하지 않는다. 실행 이력 table은 Phase 4 수용 기준에 필요하지 않아 추가하지 않으며 원문 질문/provider 응답도 저장하지 않는다.
+
+## ADR-021: Analyst scope 관계 검증과 불완전 결과 fail-closed
+
+선택: placeholder와 column의 단순 존재가 아니라 sqlglot AST의 실제 관계를 검사한다. physical metric table을 읽는 각 query scope는 alias를 고려한 dataset equality를 conjunctive predicate로 가져야 하며 최상위 LIMIT expression 자체가 `:fetch_limit`이어야 한다. 반대 방향 equality는 동등하므로 허용한다. compiled placeholder와 parameter key는 정확히 같아야 하고 executor fetch limit은 effective limit보다 정확히 한 행 많아야 한다.
+
+집계의 `source_row_count`가 0이면 `NO_DATA`로 반환하고 NULL 합계를 0으로 바꾸지 않는다. 실제 원시 0행은 READY이며 0 분모 KPI만 null이다. ranking과 anomaly는 truncated 모집단으로 사실을 생성하지 않고 `NEEDS_CLARIFICATION/analysis_result_too_large`로 범위 축소를 요구한다. daily trend는 부분 결과 사용이 가능하므로 truncated 경고와 함께 허용한다. ranking null은 정렬 방향과 무관하게 마지막이며 동률은 Campaign 이름과 UUID 오름차순으로 고정한다.
+
+질문 guard는 단일 SQL keyword가 아닌 명확한 SQL 문장·실행 지시만 차단한다. `drop`, `set`, `update`, `create`는 광고 문맥의 정상 단어일 수 있으며 보안 경계는 structured plan 의미 검증, compiler, AST validator, PostgreSQL read-only/timeout/limit에 둔다.

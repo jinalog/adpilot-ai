@@ -219,9 +219,43 @@ Phase 4 이미지는 기존 개발 DB와 분리한 `adpilot-phase4` Compose 프�
 
 ### Phase 4 안전성·평가 결과
 
-- Mock Analyst golden dataset: 22/22 passed
-- SQL safety corpus: 40/40 passed
+- Mock Analyst golden dataset: 30/30 passed
+- SQL safety corpus: 51/51 passed
 - PostgreSQL 전용 검증: read-only write 거부·rollback, 실제 statement timeout, limit+1 truncation, AST 차단 포함
 - 하드 제한: 최대 500행, 2.5초 statement timeout, 최대 366일 범위
 - 실제 LLM 호출 및 실제 LLM 품질 평가: 미실행
 - 실제 광고 데이터 연결·설정 변경·자동 권고 실행: 없음
+
+### Phase 4.1 — Analyst Safety & Edge-case Hardening
+
+Phase 4.1 캡처는 기존 `adpilot-phase4` 격리 환경에 90일·Campaign 6개·metric 540행의 별도 고정 seed 합성 dataset을 추가해 수행했습니다. 기존 dataset은 삭제하거나 교체하지 않았습니다.
+
+![Normal CTR drop wording](assets/screenshots/phase-4/08-normal-ctr-drop.png)
+
+- 화면: 정상 광고 성과 문구
+- 구현 기능: `drop`이 포함된 일반 광고 질문을 공격으로 오인하지 않고 KPI fact를 계산
+- 검증 내용: 고신뢰 SQL 실행 의도만 사전 차단하며 정상 질문은 `READY`와 evidence로 이어짐
+- 데이터: seed `20261109` 고정 합성 dataset, Mock planner
+
+![Explicit no data response](assets/screenshots/phase-4/09-no-data.png)
+
+- 화면: 원본 데이터 없음
+- 구현 기능: 조회 범위의 `source_row_count=0`을 `NO_DATA`로 구분
+- 검증 내용: 원본 행 부재를 실제 KPI 0 또는 0분모 `None`과 혼동하지 않고 facts/evidence를 비워 반환함
+- 데이터: 합성 dataset 범위 밖 날짜, Mock planner
+
+![Fail closed oversized result](assets/screenshots/phase-4/10-result-too-large.png)
+
+- 화면: 과대 anomaly 결과 차단
+- 구현 기능: 500행을 넘는 ranking/anomaly 결과를 부분 사실로 표시하지 않고 범위 축소 요청
+- 검증 내용: `limit+1`로 truncation을 탐지해 `analysis_result_too_large`와 `NEEDS_CLARIFICATION`으로 fail-closed함
+- 데이터: 540개 일별 metric 행의 별도 합성 dataset, Mock planner
+
+![High confidence SQL intent blocked](assets/screenshots/phase-4/11-malicious-sql-blocked.png)
+
+- 화면: 명시적 SQL 파괴 지시 차단
+- 구현 기능: `DROP TABLE campaigns`를 `guard_question`에서 차단
+- 검증 내용: 일반적인 drop/set/update/create 광고 문구는 허용하면서 명시적 SQL 실행 의도만 `unsafe_question`으로 종료함
+- 데이터: 저장되지 않는 합성 공격 문자열
+
+Phase 4.1에서는 각 physical `daily_ad_metrics` query scope에 `dataset_run_id = :dataset_run_id` 관계가 존재하는지 AST scope 단위로 검증하고, placeholder/parameter 집합 및 최상위 `LIMIT :fetch_limit` 계약을 함께 확인합니다. 기간 비교는 겹치는 범위를 거부하고 한쪽 기간만 데이터가 없으면 부분 데이터 안내를 반환합니다. 실제 LLM 호출과 실제 광고 데이터 연결은 수행하지 않았습니다.
